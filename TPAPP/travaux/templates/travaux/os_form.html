@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block extra_css %}
+<style>
+    /* Amélioration visuelle des champs */
+    .form-control:focus, .form-select:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.1);
+    }
+    .card { border-radius: 12px; overflow: hidden; }
+    .breadcrumb-item a { text-decoration: none; color: #6c757d; }
+    .breadcrumb-item.active { color: #0d6efd; font-weight: 600; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-9 col-md-11">
+            
+            <div class="mb-4">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{% url 'marche_reporting' %}">Reporting</a></li>
+                        <li class="breadcrumb-item active">Nouvel OS</li>
+                    </ol>
+                </nav>
+                <h3 class="fw-bold text-dark">Gestion des Ordres de Service</h3>
+                <p class="text-muted">Enregistrement d'un acte administratif pour le marché <strong>{{ marche.num_marche }}</strong></p>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-primary text-white py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-file-earmark-medical me-2"></i>Saisie d'un nouvel OS / Avenant
+                        </h5>
+                        <span class="badge bg-light text-primary fw-bold">{{ marche.axe.designation }}</span>
+                    </div>
+                </div>
+
+                <div class="card-body p-4 bg-white">
+                    <div class="row mb-4 pb-3 border-bottom g-2">
+                        <div class="col-md-6">
+                            <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Objet du marché</small>
+                            <span class="text-dark">{{ marche.description|truncatewords:15 }}</span>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Titulaire</small>
+                            <span class="badge bg-secondary">{{ marche.titulaire }}</span>
+                        </div>
+                    </div>
+
+                    <form method="post" id="os-form">
+                        {% csrf_token %}
+                        
+                        <div class="row g-4">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-secondary"><i class="bi bi-tag me-1"></i>Type d'acte</label>
+                                {{ form.type_os }}
+                                {% if form.type_os.errors %}<div class="text-danger small">{{ form.type_os.errors }}</div>{% endif %}
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-secondary"><i class="bi bi-calendar-event me-1"></i>Date d'effet</label>
+                                {{ form.date_os }}
+                                {% if form.date_os.errors %}<div class="text-danger small">{{ form.date_os.errors }}</div>{% endif %}
+                            </div>
+                            <div id="div_avenant" class="col-12" style="display:none;">
+                                <div class="p-3 bg-primary bg-opacity-10 border-start border-primary border-4 rounded">
+                                    <label class="form-label fw-bold text-primary">Délai supplémentaire accordé</label>
+                                    
+                                    <div class="input-group mb-2">
+                                        {{ form.delai_supplementaire }}
+                                        {{ form.delai_unit }}
+                                        <span class="input-group-text bg-white fw-bold">+</span>
+                                        {{ form.delai_jours_supplementaire }}
+                                        <span class="input-group-text small">jours</span>
+                                    </div>
+                                    
+                                    <div class="form-text text-primary small">
+                                        <i class="bi bi-info-circle me-1"></i>Indiquez le temps additionnel (en mois/jours) qui sera ajouté à la date de fin.
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="div_reprise" class="col-12" style="display:none;">
+                                <div class="p-3 bg-warning bg-opacity-10 border-start border-warning border-4 rounded">
+                                    <label class="form-label fw-bold text-warning">Référence de l'Arrêt à reprendre</label>
+                                    {{ form.os_arret_concerne }}
+                                    <div class="form-text text-warning small"><i class="bi bi-exclamation-triangle me-1"></i>Sélectionnez l'OS d'arrêt correspondant pour calculer la suspension.</div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold text-secondary"><i class="bi bi-chat-left-text me-1"></i>Commentaire / Justification</label>
+                                {{ form.commentaire }}
+                            </div>
+                        </div>
+
+                        <div class="mt-5 d-flex justify-content-between align-items-center border-top pt-4">
+                            {% if marche.pk %}
+                                <a href="{% url 'marche_detail' marche.pk %}" class="btn btn-outline-secondary px-4">
+                                    <i class="bi bi-x-circle me-2"></i>Annuler
+                                </a>
+                            {% else %}
+                                <a href="{% url 'marche_reporting' %}" class="btn btn-outline-secondary px-4">
+                                    <i class="bi bi-arrow-left me-2"></i>Retour
+                                </a>
+                            {% endif %}
+                            
+                            <button type="submit" class="btn btn-primary btn-lg px-5 shadow-sm">
+                                <i class="bi bi-check-circle me-2"></i>Enregistrer l'OS
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+    /**
+     * Gère l'affichage dynamique des champs selon le type d'OS sélectionné
+     */
+    function toggleFields() {
+        const typeField = document.querySelector('[name="type_os"]');
+        if (!typeField) return;
+
+        const type = typeField.value;
+        const divAvenant = document.getElementById('div_avenant');
+        const divReprise = document.getElementById('div_reprise');
+
+        // Animation de transition douce
+        divAvenant.style.display = (type === 'AVENANT_DELAI') ? 'block' : 'none';
+        divReprise.style.display = (type === 'REPRISE') ? 'block' : 'none';
+    }
+
+    // Initialisation
+    document.addEventListener("DOMContentLoaded", function() {
+        const typeSelect = document.querySelector('[name="type_os"]');
+        if (typeSelect) {
+            typeSelect.addEventListener('change', toggleFields);
+            toggleFields(); // Appel initial pour l'édition ou erreur de formulaire
+        }
+    });
+</script>
+{% endblock %}
