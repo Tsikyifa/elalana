@@ -1,0 +1,97 @@
+/*
+ * Jetons de thème.
+ * Les valeurs de `:root` reproduisent exactement les couleurs codées en dur
+ * qu'elles remplacent dans `components.css` : le rendu clair est inchangé.
+ * `[data-theme='dark']` ne fait que redéfinir ces mêmes jetons.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #f3f5f7;
+  --bg-from: #edf4ff;
+  --bg-to: #f3f6fb;
+
+  --panel: #ffffff;
+  --panel-soft: #f7f8fa;
+  --surface: #f8fafc;
+  --panel-muted: #eef2f7;
+  --hover: #f3f4f6;
+
+  --primary: #1f2937;
+  --primary-strong: #111827;
+  --primary-hover: #374151;
+  --on-primary: #ffffff;
+
+  /* Blocs volontairement sombres sur fond clair (item actif de la sidebar,
+     en-têtes de totaux) : ils restent sombres en mode sombre, sinon leur texte
+     clair deviendrait illisible. */
+  --inverse-bg: #111827;
+  /* Puces bleutées (icône d'en-tête de panneau, étiquette d'axe). */
+  --accent-soft: #edf4ff;
+
+  --text: #111827;
+  --text-strong: #0f172a;
+  /* Même valeur que `--primary` en clair, mais rôle opposé : `--text-2` est du
+     texte, `--primary` un fond de bouton. Ils divergent en mode sombre. */
+  --text-2: #1f2937;
+  --muted: #64748b;
+  --muted-soft: #94a3b8;
+
+  --border: #e5e7eb;
+  --border-strong: #cbd5e1;
+
+  --success: #1f9a62;
+  --warning: #d7841a;
+  --danger: #c94d4d;
+
+  --header-from: rgba(255, 255, 255, 0.96);
+  --header-to: rgba(239, 246, 255, 0.92);
+  --scrim: rgba(15, 23, 42, 0.35);
+
+  --shadow-sm: 0 4px 18px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 12px 30px rgba(15, 23, 42, 0.05);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0f141b;
+  --bg-from: #0f141b;
+  --bg-to: #141a23;
+
+  --panel: #191f29;
+  --panel-soft: #1f2632;
+  --surface: #1f2632;
+  --panel-muted: #232b38;
+  --hover: #232b38;
+
+  /* `--primary` sert de fond aux boutons pleins : il reste sombre, seul
+     le texte qu'il porte change (via `--on-primary`). */
+  --primary: #3a4658;
+  --primary-strong: #e8edf4;
+  --primary-hover: #4b5a70;
+  --on-primary: #f8fafc;
+
+  --inverse-bg: #3a4658;
+  --accent-soft: #1e2635;
+
+  --text: #e8edf4;
+  --text-strong: #f8fafc;
+  --text-2: #dbe3ec;
+  --muted: #9aa7b8;
+  --muted-soft: #6b7a8d;
+
+  --border: #2b3543;
+  --border-strong: #3a4658;
+
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+
+  --header-from: rgba(25, 31, 41, 0.96);
+  --header-to: rgba(31, 38, 50, 0.92);
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  --shadow-sm: 0 4px 18px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
