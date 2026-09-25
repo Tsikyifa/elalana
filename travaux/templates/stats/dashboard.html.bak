@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% load humanize %}
+{% load pk_utils %} {# Assurez-vous d'avoir créé ce fichier de filtres #}
+
+{% block content %}
+<div class="container-fluid py-4 bg-light">
+    <h2 class="mb-4 fw-bold text-dark">
+        <i class="bi bi-layout-text-window-reverse me-2 text-primary"></i>Tableau de Bord Décisionnel
+    </h2>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-primary text-white p-3">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="small opacity-75">Budget Engagé</div>
+                        <h4 class="fw-bold mb-0">{{ montant_total_engagé|floatformat:0 }} Ar</h4>
+                    </div>
+                    <i class="bi bi-currency-exchange fs-1 opacity-25"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-success text-white p-3">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="small opacity-75">Avancement Physique</div>
+                        <h4 class="fw-bold mb-0">{{ avg_physique|floatformat:1 }}%</h4>
+                    </div>
+                    <i class="bi bi-speedometer2 fs-1 opacity-25"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-danger text-white p-3">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="small opacity-75">Marchés en Retard</div>
+                        <h4 class="fw-bold mb-0">{{ total_global_retard }}</h4>
+                    </div>
+                    <i class="bi bi-clock-history fs-1 opacity-25"></i>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-0 shadow-sm bg-warning text-dark p-3">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <div class="small opacity-75">Reliquats (Glissements)</div>
+                        <h4 class="fw-bold mb-0">{{ reliquat_total_2026|floatformat:0 }} Ar</h4>
+                    </div>
+                    <i class="bi bi-exclamation-triangle fs-1 opacity-25"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 border-0">
+            <h5 class="mb-0 fw-bold"><i class="bi bi-table me-2 text-primary"></i>Récapitulatif des Marchés par Financement</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle">
+                    <thead class="table-light text-center small text-uppercase">
+                        <tr>
+                            <th class="text-start">Source Financement</th>
+                            {% for etat in etats_labels %}
+                                <th>{{ etat|replace_underscore }}</th>
+                            {% endfor %}
+                            <th class="bg-dark text-white">TOTAL</th>
+                            <th class="text-danger">Retard</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-center">
+                        {% for ligne in recap_financement %}
+                        <tr>
+                            <td class="text-start fw-bold">{{ ligne.type }}</td>
+                            {% for etat in etats_labels %}
+                                <td>
+                                    {% with count=ligne.details|get_item:etat %}
+                                        {% if count > 0 %}
+                                            <span class="fw-bold">{{ count }}</span>
+                                        {% else %}
+                                            <span class="text-muted opacity-25">0</span>
+                                        {% endif %}
+                                    {% endwith %}
+                                </td>
+                            {% endfor %}
+                            <td class="fw-bold bg-light">{{ ligne.total_ligne }}</td>
+                            <td>
+                                {% if ligne.retard_ligne > 0 %}
+                                    <span class="badge bg-danger-subtle text-danger border border-danger px-3">{{ ligne.retard_ligne }}</span>
+                                {% else %}
+                                    <i class="bi bi-check-circle-fill text-success opacity-50"></i>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-secondary fw-bold text-center">
+                        <tr>
+                            <td class="text-start">TOTAL GLOBAL</td>
+                            {% for etat in etats_labels %}
+                                <td>{{ total_global_cols|get_item:etat }}</td>
+                            {% endfor %}
+                            <td class="bg-dark text-white">{{ total_global_marches }}</td>
+                            <td class="text-danger">{{ total_global_retard }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold border-0 pt-3">
+                    <i class="bi bi-tools me-2 text-secondary"></i>Statut des Bacs de Traversée
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted d-block">Besoin Entretien</small>
+                            <span class="h5 fw-bold text-primary">{{ besoin_total_bac|floatformat:0|intcomma }} Ar</span>
+                        </div>
+                        <div class="col-6 text-end">
+                            <small class="text-muted d-block">Opérationnels</small>
+                            <span class="h5 fw-bold text-success">{{ bacs_operationnels }}/{{ total_bacs }}</span>
+                        </div>
+                    </div>
+                    <table class="table table-sm border-top">
+                        <thead class="small text-muted">
+                            <tr><th>Mode Propulsion</th><th class="text-end">Effectif</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for p in propulsion_stats %}
+                            <tr>
+                                <td>{{ p.propulsion }}</td>
+                                <td class="text-end"><span class="badge bg-light text-dark border">{{ p.total }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold border-0 pt-3">
+                    <i class="bi bi-bank me-2 text-secondary"></i>Indicateur de Passation (AUC)
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-around py-3 mb-3 bg-light rounded">
+                        <div class="text-center">
+                            <div class="display-6 fw-bold text-success">{{ auc_obtenues }}</div>
+                            <small class="text-muted">AUC Obtenues</small>
+                        </div>
+                        <div class="text-center border-start ps-4">
+                            <div class="display-6 fw-bold text-warning">{{ auc_en_attente }}</div>
+                            <small class="text-muted">En Attente</small>
+                        </div>
+                    </div>
+                    {% widthratio auc_obtenues total_marches 100 as pct_auc %}
+                    <label class="small text-muted d-flex justify-content-between">
+                        Progression des validations <span>{{ pct_auc }}%</span>
+                    </label>
+                    <div class="progress mt-1" style="height: 10px;">
+                        <div class="progress-bar bg-success" style="width: {{ pct_auc }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .table th { font-size: 0.8rem; }
+    .table td { font-size: 0.9rem; }
+    .bg-danger-subtle { background-color: #f8d7da !important; }
+</style>
+{% endblock %}

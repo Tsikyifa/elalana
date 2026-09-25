@@ -1,0 +1,227 @@
+<div class="container-fluid p-0">
+    {% with dernier=avancements.first %}
+        {% if dernier.est_en_retard %}
+        <div class="alert alert-danger d-flex align-items-center mb-4 border-0 shadow-sm mx-2" role="alert">
+            <i class="bi bi-exclamation-octagon-fill fs-4 me-3"></i>
+            <div>
+                <h6 class="mb-0 fw-bold">Alerte de performance : Retard détecté</h6>
+                <p class="mb-0 small">L'avancement physique ({{ dernier.avancement_physique }}%) est inférieur au délai consommé ({{ dernier.avancement_temporel }}%).</p>
+            </div>
+        </div>
+        {% endif %}
+    {% endwith %}
+
+<div class="row mb-4 mx-0">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm bg-white rounded-3">
+            <div class="card-body p-4">
+
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+
+                    <!-- LEFT -->
+                    <div class="flex-grow-1">
+                        <div class="text-muted small fw-bold text-uppercase mb-2 border-bottom pb-2">
+                            Description du Marché
+                        </div>
+
+                        <h4 class="fw-bold text-primary mb-2">
+                            {{ marche.description }}
+                        </h4>
+
+                        <div class="text-muted small">
+                            <i class="bi bi-hash me-1"></i>
+                            N° Marché :
+                            <strong class="text-dark">{{ marche.num_marche }}</strong>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT -->
+                    <div class="text-end d-flex flex-column align-items-end gap-2">
+
+                        {% if marche.responsable %}
+                        <div class="badge bg-primary px-3 py-2">
+                            <i class="bi bi-person-badge me-1"></i>
+                            {{ marche.responsable }}
+                        </div>
+                        {% endif %}
+
+                        <div class="badge bg-dark px-3 py-2">
+                            <i class="bi bi-rulers me-1"></i>
+                            {{ marche.longueur_totale }} Km
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+    <ul class="nav nav-pills mb-3 bg-white p-2 rounded shadow-sm mx-2" id="modalTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active fw-bold text-uppercase small border-0" id="tech-tab" data-bs-toggle="tab" data-bs-target="#tech-content" type="button">
+                <i class="bi bi-cone-striped me-2"></i>Suivi Technique
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold text-uppercase small border-0" id="admin-tab" data-bs-toggle="tab" data-bs-target="#admin-content" type="button">
+                <i class="bi bi-file-earmark-ruled me-2"></i>Ordres de Service
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content px-2" id="modalTabContent">
+        
+        <div class="tab-pane fade show active" id="tech-content" role="tabpanel">
+            <div class="row g-3 mb-4">
+                <div class="col-md-4">
+                    <div class="p-3 border rounded bg-white shadow-sm">
+                        <small class="text-muted d-block fw-bold small text-uppercase mb-1">Axe</small>
+                        <p class="mb-0 fw-bold small"><i class="bi bi-geo-alt text-danger me-1"></i>{{ marche.axe }}</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="p-3 border rounded bg-white shadow-sm">
+                        <small class="text-muted d-block fw-bold small text-uppercase mb-1">Titulaire</small>
+                        <p class="mb-0 fw-bold small text-truncate"><i class="bi bi-building text-secondary me-1"></i>{{ marche.titulaire }}</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="p-3 border rounded bg-white shadow-sm">
+                        <small class="text-muted d-block fw-bold small text-uppercase mb-1">Financement</small>
+                        <span class="badge bg-success-subtle text-success border border-success w-100">{{ marche.get_financement_display }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3">
+                    <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-clock-history me-2"></i>Historique Chronologique</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light small fw-bold text-uppercase">
+                            <tr>
+                                <th class="ps-3">Date</th>
+                                <th>Situation</th>
+                                <th class="text-center">Délai Consommé</th>
+                                <th class="text-center">Physique</th>
+                                {% if user.is_superuser or is_chef_axe %}<th>Actions</th>{% endif %}
+                            </tr>
+                        </thead>
+                        <tbody class="small">
+                            {% for a in avancements %}
+                            <tr>
+                                <td class="ps-3 fw-bold">{{ a.date_avancement|date:"d/m/Y" }}</td>
+                                <td>
+                                    <span class="badge {% if a.situation_w == 'Arrete' %}bg-danger{% else %}bg-secondary-subtle text-secondary{% endif %} border px-2">
+                                        {{ a.get_situation_w_display }}
+                                    </span>
+                                </td>
+                                <td class="text-center fw-bold text-info">{{ a.avancement_temporel }}%</td>
+                                <td class="text-center" style="width: 150px;">
+                                    <div class="progress mb-1" style="height: 6px;">
+                                        <div class="progress-bar {% if a.est_en_retard %}bg-danger{% else %}bg-primary{% endif %}" 
+                                             style="width: {{ a.avancement_physique }}%"></div>
+                                    </div>
+                                    <span class="fw-bold {% if a.est_en_retard %}text-danger{% endif %}">{{ a.avancement_physique }}%</span>
+                                </td>
+                                {% if user.is_superuser or is_chef_axe %}<td>
+                                    <button class="btn btn-sm btn-light border-0" type="button" data-bs-toggle="dropdown">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                    <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0">
+                                                        <li><a class="dropdown-item" href="{% url 'avancement_update' a.pk %}"><i class="bi bi-pencil me-2 text-primary"></i>Modifier</a></li>
+                                                        <li><hr class="dropdown-divider"></li>
+                                                        <li>
+                                                            <a class="dropdown-item text-danger" href="#" onclick="confirmDelete('{% url 'avancement_delete' a.pk %}', 'cet avancement')">
+                                                                <i class="bi bi-trash me-2"></i>Supprimer
+                                                            </a>
+                                                        </li>
+                                                    </ul>
+
+                                </td>{% endif %}
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-4 text-muted">Aucun avancement.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-pane fade" id="admin-content" role="tabpanel">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-dark text-white py-3">
+                    <h6 class="mb-0 fw-bold"><i class="bi bi-file-earmark-ruled me-2"></i>Actes Administratifs (OS)</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="bg-light small fw-bold text-uppercase">
+                            <tr>
+                                <th class="ps-3">Date d'effet</th>
+                                <th>Nature de l'OS</th>
+                                <th>Délai Accordé</th>
+                                <th>Commentaires</th>
+                                {% if user.is_superuser or is_chef_axe %}<th>Actions</th>{% endif %}
+
+                            </tr>
+                        </thead>
+                        <tbody class="small">
+                            {% for os in ordres_service %}
+                            <tr>
+                                <td class="ps-3 fw-bold">{{ os.date_os|date:"d/m/Y" }}</td>
+                                <td>
+                                    <span class="badge {% if os.type_os == 'ARRET' %}bg-danger-subtle text-danger border-danger{% elif os.type_os == 'REPRISE' %}bg-success-subtle text-success border-success{% else %}bg-light text-dark border{% endif %} px-2 py-1">
+                                        {{ os.get_type_os_display }}
+                                    </span>
+                                </td>
+                                <td class="fw-bold">
+                                    {% if os.delai_supplementaire > 0 %}
+                                        <span class="text-primary">+ {{ os.delai_supplementaire }} {{ os.get_delai_unit_display }}</span>
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td class="text-muted italic">{{ os.commentaire|default:"—" }}</td>
+                                {% if user.is_superuser or is_chef_axe %}
+                                    <td>
+                                                <div class="btn-group">
+                                                    <a href="{% url 'os_update' os.pk %}" class="btn btn-sm btn-outline-primary border-0"><i class="bi bi-pencil"></i></a>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger border-0" 
+                                                            onclick="confirmDelete('{% url 'os_delete' os.pk %}', 'cet Ordre de Service')">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                {% endif %}
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="4" class="text-center py-4 text-muted">Aucun ordre de service enregistré.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if marche.date_fin_actualisee %}
+                <div class="card-footer bg-warning bg-opacity-10 border-top-0">
+                    <small class="fw-bold text-dark">
+                        <i class="bi bi-calendar-check me-1"></i> Échéance actualisée : {{ marche.date_fin_actualisee|date:"d F Y" }}
+                    </small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4 px-2 pb-3">
+        <h6 class="text-muted text-uppercase small fw-bold mb-2"><i class="bi bi-pin-map-fill me-1"></i> Zone d'intervention</h6>
+        <div class="d-flex flex-wrap gap-2">
+            {% for d in marche.districts_touches %}
+                <span class="badge rounded-pill bg-white text-dark border px-3 py-2 shadow-sm" style="font-size: 0.75rem;">{{ d.district }}</span>
+            {% empty %}
+                <span class="text-muted small italic">Aucune donnée de localisation</span>
+            {% endfor %}
+        </div>
+    </div>
+</div>

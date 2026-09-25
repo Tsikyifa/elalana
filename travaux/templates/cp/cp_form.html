@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-dark text-white py-3 d-flex align-items-center">
+                    <i class="bi bi-file-earmark-text me-2 fs-4"></i>
+                    <h5 class="mb-0 fw-bold">
+                        {% if object %}Modification de la Convention{% else %}Nouvelle Convention Programme{% endif %}
+                    </h5>
+                </div>
+
+                <div class="card-body p-4">
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                            {% if form.errors %}
+                            <div class="alert alert-danger border-0 shadow-sm mb-4">
+                                <div class="fw-bold mb-2"><i class="bi bi-exclamation-circle me-2"></i>Erreurs de validation :</div>
+                                <ul class="small mb-0">
+                                    {% for field, errors in form.errors.items %}
+                                        {% for error in errors %}
+                                            <li><strong>{{ field|capfirst }} :</strong> {{ error }}</li>
+                                        {% endfor %}
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        {% endif %}
+                        <div class="row mb-4">
+                            <div class="col-12 border-bottom mb-3">
+                                <h6 class="text-primary fw-bold text-uppercase small">1. Identification de l'Axe</h6>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold">Axe Routier</label>
+                                {{ form.axe }}
+                                {% if form.axe.errors %}<div class="text-danger small">{{ form.axe.errors }}</div>{% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Section / Tronçon</label>
+                                {{ form.section }}
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Année Budgétaire</label>
+                                {{ form.annee }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-4 bg-light p-3 rounded shadow-sm mx-0">
+                            <div class="col-12 mb-3">
+                                <h6 class="text-primary fw-bold text-uppercase small">2. Localisation (PK et Villages)</h6>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold text-success">Départ (PK Début)</label>
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    {{ form.pk_debut }}
+                                </div>
+                                {{ form.localite_deb }}
+                                <small class="text-muted">Nom du village ou point de repère de début</small>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label fw-bold text-danger">Arrivée (PK Fin)</label>
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                    {{ form.pk_fin }}
+                                </div>
+                                {{ form.localite_fin }}
+                                <small class="text-muted">Nom du village ou point de repère de fin</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-12 border-bottom mb-3">
+                                <h6 class="text-primary fw-bold text-uppercase small">3. Données Techniques et Budget</h6>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">Région</label>
+                                {{ form.region }}
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">Nature de la Surface</label>
+                                {{ form.nature_surface }}
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label class="form-label fw-bold">Linéaire à traiter (km)</label>
+                                {{ form.longueur_traite }}
+                                <small class="text-muted">Partie de la section concernée par les travaux</small>
+                            </div>
+
+                            <div class="col-md-6 mt-2">
+                                <div class="p-3 border rounded border-warning bg-warning-soft">
+                                    <label class="form-label fw-bold text-dark">Montant Minima (Ar)</label>
+                                    {{ form.montant_minima }}
+                                </div>
+                            </div>
+                            <div class="col-md-6 mt-2">
+                                <div class="p-3 border rounded border-success bg-success-soft">
+                                    <label class="form-label fw-bold text-dark">Montant Souhaité (Ar)</label>
+                                    {{ form.montant_souhaite }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-5 d-flex justify-content-between border-top pt-4">
+                            <a href="{% url 'cp_list' %}" class="btn btn-light px-4 border">
+                                <i class="bi bi-arrow-left me-2"></i>Retour à la liste
+                            </a>
+                            <button type="submit" class="btn btn-primary px-5 shadow">
+                                <i class="bi bi-check-lg me-2"></i>Enregistrer la Convention
+                            </button>
+                        </div>
+                        
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Alignement interne pour le PKWidget (Km + m) */
+    .django-pk-widget {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .bg-warning-soft { background-color: #fffdf5; }
+    .bg-success-soft { background-color: #f5fff9; }
+
+    /* Animation au focus */
+    .form-control:focus, .form-select:focus {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.1);
+    }
+</style>
+{% endblock %}

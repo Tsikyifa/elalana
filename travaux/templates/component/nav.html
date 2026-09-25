@@ -1,0 +1,97 @@
+{% load group_tags %}
+<nav class="navbar navbar-expand-lg navbar-light bg-white shadow-sm fixed-top px-4">
+    
+    <div class="container-fluid">
+
+        <!-- Logo / Nom Application -->
+        <a class="navbar-brand fw-bold text-primary" href="{% url 'home' %}">
+            <i class="bi bi-cone-striped me-2"></i> Accueil
+        </a>
+
+        <!-- Bouton mobile -->
+        <button class="navbar-toggler border-0" type="button" 
+                data-bs-toggle="collapse" 
+                data-bs-target="#mainNavbar">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="mainNavbar">
+
+            <!-- Titre dynamique centré -->
+            <div class="mx-auto fw-semibold text-dark fs-5">
+                {% if request.resolver_match.url_name == 'bac_list' %}
+                    BAC
+                {% elif request.resolver_match.url_name == 'cp_list' %}
+                    CP
+                {% elif request.resolver_match.url_name == 'home' %}
+
+                {% elif request.resolver_match.url_name == 'annuaire_list' %}
+                    Contacts
+                {% elif request.resolver_match.url_name == 'marche_reporting' %}
+                    Reporting
+                {% else %}
+               
+                {% endif %}
+            </div>
+
+            {% if user.is_authenticated %}
+            <!-- Partie droite -->
+            <div class="d-flex align-items-center gap-3">
+
+                <!-- Bloc édition -->
+                 {% if request.resolver_match.url_name == 'marche_reporting' %}
+                 {% if user|has_group:"CCP" or user.is_superuser %}
+
+                    <a href="{% url 'export_marches' %}"
+                    class="btn btn-danger btn-sm">
+
+                        <i class="bi bi-file-earmark-pdf"></i>
+                        Export PDF
+
+                    </a>
+
+                    {% endif %}
+                    <div class="d-flex align-items-center">
+                        {% if is_chef_axe or user.is_superuser %}
+                            <button id="toggleBtn" onclick="toggleEditMode()" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-pencil-square"></i> Activer l'Édition
+                            </button>
+                        {% else %}
+                            <span class="badge bg-secondary"><i class="bi bi-lock"></i> Mode Consultation</span>
+                        {% endif %}
+                        </div>
+
+                        
+                {% endif %}
+                {% if request.resolver_match.url_name == 'projets_routiers_menu' %}
+                            <div class="edit-controls">
+                                <a href="{% url 'marche_create' %}" 
+                                class="btn btn-sm btn-info text-white">
+                                    <i class="bi bi-file-earmark-plus"></i> Nouveau Marché
+                                </a>
+                            </div>
+                {% endif %}
+                <!-- Utilisateur -->
+                <div class="text-end">
+                    <span class="small text-muted d-block">
+                        Connecté : {{ user.username }}
+                    </span>
+                </div>
+
+                <!-- Logout -->
+                <form action="{% url 'logout' %}" method="post" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" 
+                            class="btn btn-outline-danger btn-sm" 
+                            title="Déconnexion">
+                        <i class="bi bi-power"></i>
+                    </button>
+                </form>
+
+            </div>
+            {% endif %}
+
+        </div>
+
+    </div>
+</nav>

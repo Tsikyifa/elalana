@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}Suppression Marché{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+
+            <div class="card border-danger shadow">
+
+                <div class="card-header bg-danger text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        Confirmation de suppression
+                    </h4>
+                </div>
+
+                <div class="card-body">
+
+                    <div class="alert alert-warning">
+                        <strong>Attention :</strong>
+                        Cette opération est irréversible.
+                    </div>
+
+                    <p>
+                        Vous êtes sur le point de supprimer le marché suivant :
+                    </p>
+
+                    <table class="table table-bordered">
+                        <tr>
+                            <th width="30%">Axe</th>
+                            <td>{{ object.axe.designation }}</td>
+                        </tr>
+
+                        <tr>
+                            <th>Objet</th>
+                            <td>{{ object.resume }}</td>
+                        </tr>
+
+                        <tr>
+                            <th>Titulaire</th>
+                            <td>{{ object.titulaire }}</td>
+                        </tr>
+
+                        <tr>
+                            <th>Financement</th>
+                            <td>{{ object.get_financement_display }}</td>
+                        </tr>
+                    </table>
+
+                    {% if object.avancements.exists %}
+                    <div class="alert alert-danger">
+                        <strong>Attention :</strong>
+                        Ce marché possède déjà des avancements enregistrés.
+                    </div>
+                    {% endif %}
+
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <div class="d-flex justify-content-between">
+
+                            <a href="{% url 'marche_reporting' %}"
+                               class="btn btn-secondary">
+                                <i class="bi bi-arrow-left"></i>
+                                Annuler
+                            </a>
+
+                            <button type="submit"
+                                    class="btn btn-danger">
+                                <i class="bi bi-trash"></i>
+                                Confirmer la suppression
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded shadow-sm border-start border-primary border-4">
+        <div>
+            <h2 class="fw-bold mb-1"><i class="bi bi-calendar-check text-primary me-2"></i>Suivi des Reports Budgétaires</h2>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item active">Exercice {{ annee_filtre }}</li>
+                    <li class="breadcrumb-item small text-muted">{{ glissements.count }} Marché(s) en glissement</li>
+                </ol>
+            </nav>
+        </div>
+        <button class="btn btn-outline-primary btn-sm" onclick="window.print()">
+            <i class="bi bi-printer me-2"></i>Exporter PDF
+        </button>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="table-responsive rounded">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th class="text-center py-3" style="width: 50px;">#</th>
+                        <th class="text-start">Identification du Marché</th>
+                        <th class="text-center">Financement & Reliquat</th>
+                        <th class="text-center">Statut AUC</th>
+                        <th class="text-center">Passation</th>
+                        <th class="text-center">Exécution Phys.</th>
+                        <th class="text-start">Observations / Motifs</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white">
+                    {% for item in glissements %}
+                    <tr>
+                        <td class="text-center text-muted fw-bold small">{{ forloop.counter }}</td>
+                        
+                        <td style="min-width: 250px;">
+                            <div class="d-flex flex-column">
+                                <span class="badge bg-light text-primary border align-self-start mb-1" style="font-size: 0.75rem;">
+                                    <i class="bi bi-geo-alt-fill me-1"></i>{{ item.marche.axe.nom }}
+                                </span>
+                                <div class="fw-bold text-dark mb-1" style="line-height: 1.2;">
+                                    {{ item.marche.resume|default:"(Pas d'objet défini)" }}
+                                </div>
+                                <div class="small text-muted mb-1">
+                                    <i class="bi bi-hash me-1"></i>{{ item.marche.num_marche }}
+                                </div>
+                                <div class="small text-secondary fw-semibold">
+                                    <i class="bi bi-building me-1"></i>{{ item.marche.titulaire|upper }}
+                                </div>
+                            </div>
+                        </td>
+
+                        <td class="text-center">
+                            <div class="fw-bold text-dark">{{ item.montant_reliquat }} Ar</div>
+                            <div class="badge bg-info-subtle text-info small border border-info">
+                                Origine : {{ item.annee_origine }}
+                            </div>
+                        </td>
+
+                        <td class="text-center">
+                            {% if item.auc == 'Obtenue' %}
+                                <span class="badge rounded-pill bg-success px-3">
+                                    <i class="bi bi-check-circle-fill me-1"></i> {{ item.auc }}
+                                </span>
+                            {% else %}
+                                <span class="badge rounded-pill bg-warning text-dark px-3">
+                                    <i class="bi bi-hourglass-split me-1"></i> {{ item.auc }}
+                                </span>
+                            {% endif %}
+                            {% if item.date_auc %}
+                                <div class="small text-muted mt-1" style="font-size: 0.7rem;">
+                                    le {{ item.date_auc|date:"d/m/Y" }}
+                                </div>
+                            {% endif %}
+                        </td>
+
+                        <td class="text-center">
+                            <span class="small fw-bold text-uppercase p-1 border rounded bg-light">
+                                {{ item.get_passation_display }}
+                            </span>
+                        </td>
+
+                        <td class="text-center" style="width: 150px;">
+                            {% with dernier=item.marche.avancements.first %}
+                                <div class="d-flex align-items-center justify-content-center">
+                                    <div class="progress flex-grow-1 me-2" style="height: 6px;">
+                                        <div class="progress-bar bg-success" role="progressbar" 
+                                             style="width: {{ dernier.pourcentage|default:0 }}%;"></div>
+                                    </div>
+                                    <span class="small fw-bold text-success">{{ dernier.pourcentage|default:0 }}%</span>
+                                </div>
+                            {% endwith %}
+                        </td>
+
+                        <td class="text-start">
+                            <div class="small text-muted text-wrap" style="max-width: 200px; font-style: italic;">
+                                {{ item.observation|default:"Aucune observation" }}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center py-5">
+                            <i class="bi bi-inbox fs-1 text-muted d-block mb-2"></i>
+                            <p class="text-muted italic">Aucun marché en glissement répertorié pour {{ annee_filtre }}.</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Style pour le centrage et la propreté du tableau */
+    .table thead th {
+        vertical-align: middle !important;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.8px;
+        font-weight: 700;
+        border: none;
+    }
+
+    .table tbody td {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #f0f2f5;
+    }
+
+    /* Effet au survol des lignes */
+    .table-hover tbody tr:hover {
+        background-color: #f8faff !important;
+        transition: 0.2s ease-in-out;
+    }
+
+    .bg-info-subtle { background-color: #e1f5fe !important; }
+    .text-info { color: #0288d1 !important; }
+    .border-info { border-color: #b3e5fc !important; }
+</style>
+{% endblock %}

@@ -1,0 +1,284 @@
+{% load pk_utils %}
+<div class="table-responsive">
+<table class="table table-hover table-bordered table-sm table-fixed bg-white shadow-sm">
+
+<thead>
+
+<tr>
+<th rowspan="2" style="width:40px;">#</th>
+<th rowspan="2" style="width:40px;"></th>
+{% if view_type == 'pk' %}
+<th rowspan="2" style="min-width: 100px;" class="text-center">PK Deb</th>
+<th rowspan="2" style="min-width: 100px;" class="text-center">PK fin</th>
+<th rowspan="2" style="width:140px;">Région Concernée</th>
+{% endif %}
+
+<th rowspan="2" class="col-objet">Objet</th>
+
+<th rowspan="2" class="col-tiers text-center">MDC</th>
+
+{% if view_type != 'titulaire' %}
+<th rowspan="2" class="col-titulaire">Titulaire</th>
+{% endif %}
+
+<th rowspan="2" class="col-financement">Financement</th>
+
+<th colspan="3" class="text-center">
+Avancement
+</th>
+
+<th rowspan="2" class="col-situation">Situation</th>
+{% if user.is_superuser or is_chef_axe %}
+    <th rowspan="2" class="col-actions text-center edit-controls" style="width:80px;">
+        Action
+    </th>
+{% endif %}
+</tr>
+
+<tr>
+<th class="text-center small">Temporel</th>
+<th class="text-center small">Physique</th>
+<th class="text-center small">Financier</th>
+</tr>
+
+</thead>
+
+
+<tbody>
+
+{% for m in marches_list %}
+{% with last=m.avancements.first %}
+
+<tr>
+
+<td class="text-center fw-bold">
+{{ forloop.counter }}
+</td>
+<td>
+            {% if view_type == 'pk' %}
+            <button class="btn btn-sm btn-info btn-detail"
+                                        data-url="{% url 'marche_detail_modal' m.id %}">
+                                        <i class="bi bi-eye"></i>
+                                        </button>
+            {% else %}
+            <button class="btn btn-sm btn-info btn-detail"
+                                        data-url="{% url 'marche_detail_modal' m.pk %}">
+                                <i class="bi bi-eye"></i>
+                                </button>
+            
+            {% endif %}
+</td>
+{% if view_type == 'pk' %}
+<td class="fw-bold text-nowrap align-middle text-center">
+
+            {{ m.pk_debut|format_pk }}
+
+        </td>
+        <td class="fw-bold text-nowrap align-middle text-center">
+            {{ m.pk_fin|format_pk }}
+  
+                    </td>
+                    
+                    <td class="align-middle">
+                        <small class="fw-bold text-muted">{{ m.region }}</small>
+                    </td>
+{% endif %}
+
+<td>
+{{ m.resume|default:m.description|truncatechars:100|upper }}
+</td>
+
+<td class="text-center">
+{% if m.tiers %}
+<span class="badge bg-info text-dark">
+{{ m.tiers }}
+</span>
+{% else %}
+—
+{% endif %}
+</td>
+
+{% if view_type != 'titulaire' %}
+<td>
+{{ m.titulaire }}
+</td>
+{% endif %}
+
+<td>
+{% if view_type == 'pk' %}
+
+
+{{ m.financement }}
+{% else %}
+{{ m.get_financement_display }}
+{% endif %}
+</td>
+
+
+{% if view_type == 'pk' %}
+        {% if m.last %}
+
+            <td class="text-center
+            {% if m.last.avancement_temporel > m.last.avancement_physique %}
+            text-warning
+            {% else %}
+            text-info
+            {% endif %}">
+            {{ m.last.avancement_temporel }}%
+            </td>
+
+            <td class="text-center fw-bold
+            {% if m.last.est_en_retard %}
+            text-danger
+            {% elif m.last.avancement_physique >= 100 %}
+            text-success
+            {% else %}
+            text-primary
+            {% endif %}">
+            {{ m.last.avancement_physique }}%
+            </td>
+
+            <td class="text-center text-secondary">
+            {{ m.last.avancement_financier|default:0 }}%
+            </td>
+
+    {% else %}
+
+    <td class="text-center text-muted">—</td>
+    <td class="text-center text-muted">—</td>
+    <td class="text-center text-muted">—</td>
+
+    {% endif %}
+{% else %}
+    {% if last %}
+
+    <td class="text-center
+    {% if last.avancement_temporel > last.avancement_physique %}
+    text-warning
+    {% else %}
+    text-info
+    {% endif %}">
+    {{ last.avancement_temporel }}%
+    </td>
+
+    <td class="text-center fw-bold
+    {% if last.est_en_retard %}
+    text-danger
+    {% elif last.avancement_physique >= 100 %}
+    text-success
+    {% else %}
+    text-primary
+    {% endif %}">
+    {{ last.avancement_physique }}%
+    </td>
+
+    <td class="text-center text-secondary">
+    {{ last.avancement_financier|default:0 }}%
+    </td>
+
+    {% else %}
+
+    <td class="text-center text-muted">—</td>
+    <td class="text-center text-muted">—</td>
+    <td class="text-center text-muted">—</td>
+
+    {% endif %}
+{% endif %}
+
+
+<td>
+{% if view_type == 'pk' %}
+{{ m.situation }}
+{% else %}
+{{ last.get_situation_w_display|default:"—" }}
+{% endif %}
+
+</td>
+{% if user.is_superuser or is_chef_axe %}
+<td class="edit-controls text-center">
+                                {% if view_type == 'pk' %}
+                                    <a href="{% url 'os_create' m.id %}" 
+                                        class="btn btn-xs btn-outline-warning py-0 px-1" 
+                                        style="font-size:10px;"
+                                        title="Nouvel OS / Avenant">
+                                            <i class="bi bi-calendar-plus"></i>
+                                    </a>
+                                    <a href="{% url 'avancement_create' m.id %}" 
+                                        class="btn btn-xs btn-outline-success py-0 px-1" 
+                                        style="font-size:10px;"
+                                        title="Nouveau relevé d'avancement">
+                                            <i class="bi bi-plus-square"></i>
+                                        </a>
+
+                                        <a href="{% url 'marche_update' m.id %}" 
+                                            class="btn btn-xs btn-outline-primary py-0 px-1" 
+                                            style="font-size:10px;"
+                                            title="Modifier le marché">
+                                            <i class="bi bi-pencil"></i>
+                                        </a>
+                                        {% if is_dgtpadmin %}
+                                        <a href="{% url 'marche_delete' m.id %}"
+                                            class="btn btn-xs btn-outline-danger py-0 px-1"
+                                            style="font-size:10px;"
+                                            title="Supprimer">
+                                                <i class="bi bi-trash"></i>
+                                            </a>
+                                        {% endif %}
+                                {% else %}
+                                <a href="{% url 'os_create' m.pk %}" 
+                                class="btn btn-xs btn-outline-warning py-0 px-1" 
+                                style="font-size:10px;"
+                                title="Nouvel OS / Avenant">
+                                    <i class="bi bi-calendar-plus"></i>
+                                </a>
+                                <a href="{% url 'avancement_create' m.pk %}" 
+                                class="btn btn-xs btn-outline-success py-0 px-1" 
+                                style="font-size:10px;"
+                                title="Nouveau relevé d'avancement">
+                                    <i class="bi bi-plus-square"></i>
+                                </a>
+
+                                <a href="{% url 'marche_update' m.pk %}" 
+                                class="btn btn-xs btn-outline-primary py-0 px-1" 
+                                style="font-size:10px;"
+                                title="Modifier le marché">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                {% if is_dgtpadmin %}
+                                <a href="{% url 'marche_delete' m.pk %}"
+                                    class="btn btn-xs btn-outline-danger py-0 px-1"
+                                    style="font-size:10px;"
+                                    title="Supprimer">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                {% endif %}
+                                
+                                {% endif %}
+</td>
+{% endif %}
+
+</tr>
+
+{% endwith %}
+{% endfor %}
+
+</tbody>
+
+</table>
+        <div class="modal fade" id="detailModal" tabindex="-1">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+
+                <div class="modal-header">
+                    <h5 class="modal-title">Détail du marché</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body" id="modalContent">
+                    Chargement...
+                </div>
+
+                </div>
+            </div>
+            </div>
+</div>

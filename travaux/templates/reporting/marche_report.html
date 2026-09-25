@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Reporting TPAPP{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Design des cartes et formulaires */
+    .card-body {
+        background: linear-gradient(145deg, #ffffff, #f8f9fa);
+    }
+
+    .form-label {
+        font-size: 12px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: #6c757d;
+    }
+
+    .form-select-sm {
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .form-select-sm:focus {
+        box-shadow: 0 0 0 3px rgba(13,110,253,0.15);
+        border-color: #0d6efd;
+    }
+
+    /* Mode Édition */
+    .edit-controls { display: none; }
+    body.edit-mode .edit-controls { display: inline-block; }
+
+    /* Table Fixe et Typographie */
+    .table-fixed { table-layout: fixed; width: 100%; }
+    .table-fixed th, .table-fixed td {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: middle;
+        font-size: 12px;
+    }
+
+    /* Largeurs de colonnes */
+    .col-num { width: 110px; }
+    .col-objet { width: 300px; }
+    .col-district { width: 200px; white-space: normal; }
+    .col-financement { width: 120px; }
+    .col-physique { width: 140px; text-align: center; }
+    .col-titulaires { width: 140px; text-align: center; }
+    .col-situation { width: 130px; text-align: center; }
+    .col-tiers { width: 100px; text-align: center; }
+    .col-actions { width: 100px; text-align: center; }
+
+    /* Headers de sections (Axes) */
+    .axe-header {
+        background: #8bc3e5;
+        color: white;
+        padding: 10px 15px;
+        border-radius: 6px;
+        margin-top: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .district-pill {
+        background: #eef2f7;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 11px;
+        margin: 2px;
+        display: inline-block;
+        border: 1px solid #d1d5db;
+    }
+
+    .table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: white;
+    }
+
+    /* Filtres et Barre flottante */
+    .filter-sidebar {
+        transition: all 0.4s ease;
+    }
+
+    #floatingFilterBtn {
+        transition: transform 0.3s ease;
+        display: none; /* Caché par défaut */
+    }
+
+    #floatingFilterBtn:hover {
+        transform: scale(1.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+    <div class="card mb-4 border-0 shadow-sm filter-sidebar" id="filterCard">
+        <div class="card-body bg-white rounded p-3">
+            <form method="get" class="row g-3" id="filterForm">
+                
+                <div class="col-md-5">
+                    <label class="form-label small fw-bold text-primary">Recherche Rapide</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-search text-primary"></i></span>
+                        <input type="text" name="q" id="searchInput" class="form-control border-start-0" 
+                               placeholder="Objet, titulaire, numéro..." 
+                               value="{{ request.GET.q }}" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Périmètre des marchés</label>
+                    <select name="status_scope" class="form-select form-select-sm border-primary-subtle" onchange="this.form.submit()">
+                        <option value="all" {% if status_scope == 'all' %}selected{% endif %}>🌐 TOUS (Vue globale)</option>
+                        <option value="active" {% if status_scope == 'active' %}selected{% endif %}>INITIE</option>
+                        <option value="anticipe" {% if status_scope == 'anticipe' %}selected{% endif %}>Anticipé</option>
+                        <option value="inactive" {% if status_scope == 'inactive' %}selected{% endif %}>NON ACTIFS (Études, AO...)</option>
+                        
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">Mode d'Affichage</label>
+                    <select name="view_type" id="viewTypeSelect" class="form-select form-select-sm bg-light fw-bold">
+                        <option value="axe" {% if view_type == 'axe' %}selected{% endif %}>📍 AXE</option>
+                        <option value="region" {% if view_type == 'region' %}selected{% endif %}>🗺️ RÉGION</option>
+                        <option value="titulaire" {% if view_type == 'titulaire' %}selected{% endif %}>🏢 TITULAIRES</option>
+                        <option value="pk" {% if view_type == 'pk' %}selected{% endif %}>📏 DÉCOUPAGE PK</option>
+                    </select>
+                </div>
+
+                <div class="col-12 mt-2 mb-1">
+                    <hr class="my-0 opacity-10">
+                </div>
+
+                <div class="col-md-2" id="axeField">
+                    <label class="form-label small fw-bold">Axe</label>
+                    {{ filter.form.axe }}
+                </div>
+                <div class="col-md-2" id="regionField">
+                    <label class="form-label small fw-bold">Région</label>
+                    {{ filter.form.region }}
+                </div>
+                <div class="col-md-2" id="titulaireField">
+                    <label class="form-label small fw-bold">Titulaire</label>
+                    {{ filter.form.titulaire }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Financement</label>
+                    {{ filter.form.financement }}
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold">Type d'axe</label>
+                    {{ filter.form.type_axe }}
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label small fw-bold">Situation</label>
+                    {{ filter.form.situation_w }}
+                </div>
+                <div class="col-md-1 text-center">
+                    <label class="form-label small fw-bold d-block">Retard</label>
+                    <div class="form-check form-switch d-inline-block mt-1">
+                        {{ filter.form.en_retard }}
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <button id="floatingFilterBtn" class="btn btn-primary shadow-lg rounded-circle" 
+            style="position: fixed; bottom: 30px; left: 30px; width: 60px; height: 60px; z-index: 1050;">
+        <i class="bi bi-filter-left fs-3"></i>
+    </button>
+            
+    {% include "reporting/affich_part/axe.html" %}
+    {% include "reporting/affich_part/region.html" %}
+    {% include "reporting/affich_part/titulaire.html" %}
+    {% include "reporting/affich_part/decoupe.html" %}
+</div>
+
+<div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content" id="modalContent">
+            </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById("filterForm");
+    const searchInput = document.getElementById("searchInput");
+    const viewTypeSelect = document.getElementById("viewTypeSelect");
+    const filterCard = document.getElementById('filterCard');
+    const floatingBtn = document.getElementById('floatingFilterBtn');
+
+    // --- 1. Gestion du Mode Édition ---
+    window.toggleEditMode = function() {
+        const isEdit = document.body.classList.toggle('edit-mode');
+        localStorage.setItem('editMode', isEdit);
+        updateEditButtonUI(isEdit);
+    };
+
+    function updateEditButtonUI(isEdit) {
+        const btn = document.getElementById('toggleBtn');
+        if (!btn) return;
+        if (isEdit) {
+            btn.innerHTML = '<i class="bi bi-eye"></i> Mode Vue';
+            btn.classList.replace('btn-outline-primary', 'btn-primary');
+            document.body.classList.add('edit-mode');
+        } else {
+            btn.innerHTML = '<i class="bi bi-pencil-square"></i> Mode Édition';
+            btn.classList.replace('btn-primary', 'btn-outline-primary');
+            document.body.classList.remove('edit-mode');
+        }
+    }
+
+    if (localStorage.getItem('editMode') === 'true') {
+        updateEditButtonUI(true);
+    }
+
+    // --- 2. Affichage Dynamique des champs de filtres ---
+    function toggleFilterFields() {
+        const view = viewTypeSelect?.value;
+        const mapping = {
+            axeField: ['axe', 'pk'],
+            regionField: ['region', 'pk'],
+            titulaireField: ['titulaire']
+        };
+
+        Object.keys(mapping).forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = mapping[id].includes(view) ? "block" : "none";
+        });
+    }
+    toggleFilterFields();
+
+    // --- 3. Recherche Autocomplétée (Debounce 600ms) ---
+    let searchTimer;
+    if (searchInput) {
+        // Restaurer le focus et placer le curseur à la fin
+        if (searchInput.value.length > 0) {
+            searchInput.focus();
+            searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+        }
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => form.submit(), 600);
+        });
+    }
+
+    // --- 4. Changements de Selects ---
+    document.querySelectorAll("#filterForm select").forEach(select => {
+        select.addEventListener("change", function() {
+            if (this.id === "viewTypeSelect") {
+                const url = new URL(window.location.href);
+                url.search = `?view_type=${this.value}`; // Reset filtres spécifiques
+                const scope = document.querySelector('select[name="status_scope"]')?.value;
+                if (scope) url.searchParams.set("status_scope", scope);
+                window.location.href = url.toString();
+            } else {
+                form.submit();
+            }
+        });
+    });
+
+    // --- 5. Scroll et Bouton Flottant ---
+    window.addEventListener('scroll', () => {
+        const scrolled = window.scrollY > 250;
+        floatingBtn.style.display = scrolled ? 'block' : 'none';
+        filterCard.style.opacity = scrolled ? '0.2' : '1';
+        filterCard.style.pointerEvents = scrolled ? 'none' : 'auto';
+    });
+
+    floatingBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setTimeout(() => searchInput?.focus(), 600);
+    });
+
+    // --- 6. Chargement Modal AJAX ---
+    document.querySelectorAll(".btn-detail").forEach(btn => {
+        btn.addEventListener("click", function() {
+            fetch(this.dataset.url)
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById("modalContent").innerHTML = html;
+                    new bootstrap.Modal(document.getElementById("detailModal")).show();
+                });
+        });
+    });
+});
+
+// --- 7. Confirmation de Suppression ---
+function confirmDelete(url, label) {
+    if (confirm(`Supprimer définitivement : ${label} ?`)) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = url;
+        const csrf = document.createElement('input');
+        csrf.type = 'hidden';
+        csrf.name = 'csrfmiddlewaretoken';
+        csrf.value = '{{ csrf_token }}';
+        form.appendChild(csrf);
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

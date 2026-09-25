@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Supprimer la Convention - {{ object.section }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card border-danger shadow-lg">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="card-title mb-0">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>Confirmation de suppression
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <p class="lead">Êtes-vous sûr de vouloir supprimer cette convention ?</p>
+                    
+                    <div class="alert alert-light border">
+                        <ul class="list-unstyled mb-0">
+                            <li><strong>Axe :</strong> {{ object.axe.designation }}</li>
+                            <li><strong>Section :</strong> {{ object.section }}</li>
+                            <li><strong>Année budgétaire :</strong> {{ object.annee }}</li>
+                            <li><strong>Linéaire :</strong> PK {{ object.pk_debut }} → PK {{ object.pk_fin }} ({{ object.longueur }} km)</li>
+                        </ul>
+                    </div>
+
+                    <p class="text-muted small">
+                        <i class="bi bi-info-circle me-1"></i> Cette action est irréversible. Toutes les données liées à cette planification pour l'année {{ object.annee }} seront effacées.
+                    </p>
+                </div>
+                <div class="card-footer d-flex justify-content-between bg-white border-top-0 pb-4">
+                    <a href="{% url 'cp_list' %}" class="btn btn-outline-secondary">
+                        <i class="bi bi-x-circle me-1"></i> Annuler
+                    </a>
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash me-1"></i> Confirmer la suppression
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
