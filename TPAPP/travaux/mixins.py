@@ -110,5 +110,16 @@ class AdminOrChefAxeMixin(UserPassesTestMixin):
     def test_func(self):
         obj = self.get_object()
         # On remonte jusqu'au marché lié à l'objet (OS ou Avancement)
-        marche = obj.marche 
-        return self.request.user.is_superuser or self.request.user == marche.chef_axe
+        marche = None
+        if hasattr(obj, 'marche'):
+            marche = obj.marche
+        elif hasattr(obj, 'axe') and obj.__class__.__name__ == 'Marche':
+            marche = obj
+
+        if self.request.user.is_superuser:
+            return True
+
+        if marche and hasattr(marche, 'axe') and marche.axe:
+            return self.request.user == marche.axe.attache_suivi
+
+        return False

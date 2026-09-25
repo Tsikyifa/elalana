@@ -377,6 +377,12 @@ def export_reporting_pdf(request):
     doc.build(elements)
 
     buffer.seek(0)
+    # Authorization: restrict PDF export to staff or axe-attached users
+    if not request.user.is_superuser:
+        # If any marche in the export is outside user's axe, deny
+        for m in marches:
+            if not m.axe or m.axe.attache_suivi != request.user:
+                raise PermissionDenied("Accès refusé")
     return FileResponse(buffer, as_attachment=True, filename="reporting.pdf")
 # Export CSV
 def export_pkmarche_csv(request):
@@ -408,6 +414,11 @@ def export_pkmarche_csv(request):
             pk.description
         ])
 
+    # Authorization: restrict CSV export to staff or axe-attached users
+    if not request.user.is_superuser:
+        for pk in pk_list:
+            if not pk.marche.axe or pk.marche.axe.attache_suivi != request.user:
+                raise PermissionDenied("Accès refusé")
     return response
 
 class MarcheUpdateView(LoginRequiredMixin, ChefMarcheRequiredMixin, UpdateView):
@@ -639,6 +650,14 @@ class MarcheDetailView(DetailView):
     template_name = 'travaux/marche_detail.html'
     context_object_name = 'marche'
 
+    def dispatch(self, request, *args, **kwargs):
+        # Authorization: only staff or users attached to the axe can view details
+        obj = self.get_object()
+        if not request.user.is_superuser:
+            if not obj.axe or obj.axe.attache_suivi != request.user:
+                raise PermissionDenied("Accès refusé")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         
@@ -653,8 +672,9 @@ class MarcheDetailView(DetailView):
 
 @login_required
 def marche_detail_modal(request, pk):
-
     marche = get_object_or_404(Marche, pk=pk)
+    if not request.user.is_superuser and (not marche.axe or marche.axe.attache_suivi != request.user):
+        raise PermissionDenied("Accès refusé")
 
     avancements = marche.avancements.all().order_by('-date_avancement')
 
@@ -678,6 +698,9 @@ class OSCreateView(LoginRequiredMixin, CreateView):
     def dispatch(self, request, *args, **kwargs):
         # On récupère le marché via l'UUID dans l'URL
         self.marche = get_object_or_404(Marche, pk=self.kwargs.get('marche_id'))
+        # Authorization: only staff or attached axe user can create OS
+        if not request.user.is_superuser and (not self.marche.axe or self.marche.axe.attache_suivi != request.user):
+            raise PermissionDenied("Accès refusé")
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):

@@ -334,7 +334,13 @@ class MarcheViewSet(viewsets.ModelViewSet):
         elif status_scope == 'inactive':
             queryset = queryset.exclude(Q(est_anticipe=True) | Q(etape_actuelle='EXE'))
 
-        return queryset
+        # Authorization: restrict non-staff users to marches attached to their axe
+        user = getattr(self.request, 'user', None)
+        if user is None or not getattr(user, 'is_authenticated', False):
+            return queryset.none()
+        if user.is_superuser or user.is_staff:
+            return queryset
+        return queryset.filter(axe__attache_suivi=user)
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
