@@ -142,6 +142,19 @@ class MissionViewSet(viewsets.ModelViewSet):
         """
         mission = get_object_or_404(Mission, id=pk)
 
+        # Authorization: allow staff or users from the same direction
+        user_is_allowed = False
+        if request.user.is_authenticated:
+            if request.user.is_staff or request.user.is_superuser:
+                user_is_allowed = True
+            else:
+                profile = getattr(request.user, 'agent_profile', None)
+                if profile and profile.direction == mission.direction_rattache:
+                    user_is_allowed = True
+
+        if not user_is_allowed:
+            return Response({'detail': 'Forbidden'}, status=403)
+
         try:
             pdf_path = generate_mission_pdf(mission)
         

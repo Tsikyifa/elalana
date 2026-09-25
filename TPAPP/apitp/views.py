@@ -98,6 +98,16 @@ class DoleanceViewSet(viewsets.ModelViewSet):
         # On injecte l'utilisateur ici, c'est la méthode la plus propre en DRF
         serializer.save(responsable_insert=self.request.user)
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(self.request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return qs.none()
+        if user.is_staff or user.is_superuser:
+            return qs
+        # Normal users only see their own demandes
+        return qs.filter(responsable_insert=user)
+
 class EtapeTraitementViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = EtapeTraitement.objects.all()
@@ -111,6 +121,15 @@ class PromesseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # On injecte automatiquement l'utilisateur connecté comme responsable
         serializer.save(responsable_insert=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(self.request, 'user', None)
+        if user is None or not user.is_authenticated:
+            return qs.none()
+        if user.is_staff or user.is_superuser:
+            return qs
+        return qs.filter(responsable_insert=user)
 
 
 class EtapePromesseViewSet(viewsets.ModelViewSet):

@@ -5,6 +5,7 @@ from django.shortcuts import (
 )
 
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.contrib import messages
 from django.db.models import Q
 
@@ -62,6 +63,17 @@ def creer_demande(request):
             "form": form
         }
     )
+
+
+def _user_can_access_demande(user, demande):
+    """Return True if `user` is allowed to access or modify `demande`."""
+    if user.is_staff or user.is_superuser:
+        return True
+    # owner check
+    if demande.cree_par == user:
+        return True
+    # fallback: deny
+    return False
 @login_required
 def liste_demandes(request):
 
@@ -89,11 +101,12 @@ def liste_demandes(request):
 
 @login_required
 def detail_demande(request, pk):
-
     demande = get_object_or_404(
         DemandeAudience,
         pk=pk
     )
+    if not _user_can_access_demande(request.user, demande):
+        raise PermissionDenied("Accès refusé")
 
     historiques = Historique.objects.filter(
         objet=demande.numero
@@ -114,11 +127,12 @@ def detail_demande(request, pk):
     )
 @login_required
 def programmer_audience(request, pk):
-
     demande = get_object_or_404(
         DemandeAudience,
         pk=pk
     )
+    if not _user_can_access_demande(request.user, demande):
+        raise PermissionDenied("Accès refusé")
 
     if request.method == "POST":
 
@@ -170,11 +184,12 @@ def programmer_audience(request, pk):
 
 @login_required
 def accepter_audience(request, pk):
-
     demande = get_object_or_404(
         DemandeAudience,
         pk=pk
     )
+    if not _user_can_access_demande(request.user, demande):
+        raise PermissionDenied("Accès refusé")
 
     demande.statut = "ACCEPTE"
 
@@ -200,11 +215,12 @@ def accepter_audience(request, pk):
 
 @login_required
 def refuser_audience(request, pk):
-
     demande = get_object_or_404(
         DemandeAudience,
         pk=pk
     )
+    if not _user_can_access_demande(request.user, demande):
+        raise PermissionDenied("Accès refusé")
 
     if request.method == "POST":
 
@@ -246,11 +262,12 @@ def refuser_audience(request, pk):
 
 @login_required
 def standby_audience(request, pk):
-
     demande = get_object_or_404(
         DemandeAudience,
         pk=pk
     )
+    if not _user_can_access_demande(request.user, demande):
+        raise PermissionDenied("Accès refusé")
 
     if request.method == "POST":
 
@@ -287,11 +304,12 @@ def standby_audience(request, pk):
 
 @login_required
 def rediriger_audience(request, pk):
-
     demande = get_object_or_404(
         DemandeAudience,
         pk=pk
     )
+    if not _user_can_access_demande(request.user, demande):
+        raise PermissionDenied("Accès refusé")
 
     directions = Direction.objects.all()
 
@@ -337,11 +355,12 @@ def rediriger_audience(request, pk):
 
 @login_required
 def reporter_audience(request, pk):
-
     demande = get_object_or_404(
         DemandeAudience,
         pk=pk
     )
+    if not _user_can_access_demande(request.user, demande):
+        raise PermissionDenied("Accès refusé")
 
     if request.method == "POST":
 
