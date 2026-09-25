@@ -6,12 +6,18 @@ Django settings for TPAPP project.
 from pathlib import Path
 import os
 from datetime import timedelta # <<< 1. AJOUT NÉCESSAIRE POUR JWT
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file if present (optional)
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
-SECRET_KEY = "django-insecure-6ebon0n1^*)*7*o4zi$vqjqp*lxu*bztjlv)d-(ds@t&j-p&29"
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    raise RuntimeError("DJANGO_SECRET_KEY environment variable is not set")
 DEBUG = True
 ALLOWED_HOSTS = []
 
