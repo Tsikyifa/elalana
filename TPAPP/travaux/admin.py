@@ -2,7 +2,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 from django.db import models
-from .models import Bac, Axe, PKDistrict, Marche, PKMarche, Avancement, MediaAvancement, Localisation, OS, Annuaire, ConventionProgramme
+from .models import Bac, Axe, PKDistrict, Marche, PKMarche, Avancement, MediaAvancement, Localisation, OS, Annuaire, ConventionProgramme, MessageMarche
 
 from import_export import resources, fields
 from import_export.widgets import ForeignKeyWidget, DateWidget, DecimalWidget, IntegerWidget
@@ -262,11 +262,20 @@ class OSInline(admin.TabularInline):
     # Les OS sont souvent critiques, on peut vouloir trier par date décroissante
     ordering = ('-date_os',)
 
+class MessageMarcheInline(admin.TabularInline):
+    """Fil de discussion du marché, en lecture seule depuis l'admin (les
+    messages sont écrits par les utilisateurs via l'API)."""
+    model = MessageMarche
+    extra = 0
+    fields = ('auteur', 'contenu', 'created_at')
+    readonly_fields = ('auteur', 'created_at')
+    ordering = ('created_at',)
+
 @admin.register(Marche)
 class MarcheAdmin(ImportExportModelAdmin):
     # 1. Configuration de l'affichage en liste (Dashboard enrichi)
     resource_class = MarcheResource # Ajout ici
-    inlines=[PKMarcheInline, OSInline]
+    inlines=[PKMarcheInline, OSInline, MessageMarcheInline]
     list_display = (
         'marche_identifiant', 
         'axe', 
@@ -840,7 +849,20 @@ class BacAdmin(ImportExportModelAdmin):
         if request.user.is_superuser:
             return qs
         # Si vous utilisez votre fonction is_chef_axe définie plus haut
-        from .admin import is_chef_axe 
+        from .admin import is_chef_axe
         if is_chef_axe(request.user):
             return qs.filter(axe__attache_suivi=request.user)
         return qs
+
+
+@admin.register(MessageMarche)
+class MessageMarcheAdmin(admin.ModelAdmin):
+    list_display = ('marche', 'auteur', 'apercu', 'created_at')
+    list_filter = ('created_at', 'auteur')
+    search_fields = ('contenu', 'marche__num_marche', 'marche__resume')
+    autocomplete_fields = ['marche']
+    readonly_fields = ('created_at', 'updated_at')
+
+    @admin.display(description="Message")
+    def apercu(self, obj):
+        return obj.contenu[:80] + ('…' if len(obj.contenu) > 80 else '')

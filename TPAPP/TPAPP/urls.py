@@ -23,9 +23,9 @@ from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
 from django.shortcuts import redirect
 from travaux.views import accueil
-from apitp.views import CustomAuthToken
+from apitp.views import CustomAuthToken, LogoutView
 
-from dj_rest_auth.views import LoginView, LogoutView
+from dj_rest_auth.views import LoginView
 from dj_rest_auth.registration.views import RegisterView
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -37,7 +37,7 @@ def redirect_to_reporting(request):
 urlpatterns = [
     #authentification 
     path('api/auth/login/', CustomAuthToken.as_view()),
-    #path('api/auth/logout/', LogoutView.as_view()),
+    path('api/auth/logout/', LogoutView.as_view()),
     #path('api/auth/register/', RegisterView.as_view()),
     #path('api/auth/refresh/', TokenRefreshView.as_view()),
     #########

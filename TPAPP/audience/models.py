@@ -259,3 +259,6 @@ class PieceJointe(models.Model):
         max_length=255,
         blank=True
     )
+    
+    
+    

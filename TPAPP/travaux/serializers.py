@@ -14,7 +14,7 @@ class MarcheListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Marche
-        fields = ['id', 'axe_designation', 'resume', 'financement', 'dernier_etat']
+        fields = ['id', 'axe_designation', 'resume', 'financement', 'dernier_etat', 'region']
 
     def get_dernier_etat(self, obj):
         # Récupère le dernier avancement grâce à l'ordering=['-date_avancement']

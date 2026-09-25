@@ -13,7 +13,7 @@ def format_pk(value):
         return f"{entiere:03d}+{metres:03d}"
     except (ValueError, TypeError):
         return value
-    
+ 
 @register.filter
 def get_item(dictionary, key):
     """Permet d'accéder à une clé de dictionnaire dynamiquement"""

@@ -138,10 +138,29 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOW_CREDENTIALS = True
-# 6. Configuration CORS (ajout de 127.0.0.1)
+# 6. Configuration CORS (frontend Vite + autres ports locaux)
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+]
+
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "authorization",
+    "content-type",
+    "x-csrftoken",
+    "x-requested-with",
 ]
 
 # 7. Configuration django-allauth (SITE_ID OBLIGATOIRE)
@@ -193,3 +212,6 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 IMPORT_EXPORT_ENCODING = 'utf-8-sig' # Le '-sig' ajoute le BOM pour Excel
 IMPORT_EXPORT_SKIP_ADMIN_LOG = True
+
+
+

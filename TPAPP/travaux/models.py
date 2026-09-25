@@ -239,6 +239,8 @@ class Marche(models.Model):
     tiers = models.CharField(max_length=100)
     montant = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
     titulaire = models.CharField(max_length=255)
+    # Optionnel: région associée au marché (saisie utilisateur)
+    region = models.CharField(max_length=64, blank=True, null=True)
 
     os_com = models.DateField(blank=True, null=True)
     DELAI_UNIT_CHOICES = [
@@ -385,32 +387,28 @@ class Marche(models.Model):
         return round(total, 3)
 
     def __str__(self):
-        return f"{self.num_marche} - {self.axe.designation}"
+        # 1. Validation de base (toujours possible)
+        if self.pk_debut is not None and self.pk_fin is not None:
+            if self.pk_debut >= self.pk_fin:
+                raise ValidationError("Le PK début doit être inférieur au PK fin.")
 
+        # 2. Validation des chevauchements (uniquement si l'axe est déjà sauvé)
+        # On vérifie si self.axe existe ET si son ID n'est pas None
+        if self.axe and self.axe.pk:
+            segments = PKDistrict.objects.filter(
+                axe=self.axe
+            ).exclude(id=self.id)
 
-class PKMarche(models.Model):
-    marche = models.ForeignKey(
-        'Marche',
-        on_delete=models.CASCADE,
-        related_name='segments_pk',
-        verbose_name="Marché"
-    )
-    pk_debut = models.DecimalField(
-        max_digits=10,
-        decimal_places=3,
-        verbose_name="PK Début"
-    )
-    pk_fin = models.DecimalField(
-        max_digits=10,
-        decimal_places=3,
-        verbose_name="PK Fin"
-    )
-    description = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        verbose_name="Description du tronçon"
-    )
+            for segment in segments:
+                if not (self.pk_fin <= segment.pk_debut or self.pk_debut >= segment.pk_fin):
+                    raise ValidationError(
+                        f"Ce segment ({self.pk_debut}-{self.pk_fin}) chevauche "
+                        f"le segment existant ({segment.pk_debut}-{segment.pk_fin})."
+                    )
+        else:
+            # Si on est en train de créer l'Axe, on ne peut pas encore 
+            # vérifier les chevauchements en base de données via SQL.
+            pass
 
     def clean(self):
         # 1. Vérification de présence
@@ -443,25 +441,26 @@ class PKMarche(models.Model):
         # s'applique aussi hors formulaires (ex: script, shell)
         self.full_clean()
         super().save(*args, **kwargs)
+class PKMarche(models.Model):
+
+    marche = models.ForeignKey(
+        'Marche',
+        on_delete=models.CASCADE,
+        related_name='segments_pk',
+        verbose_name='Marché'
+    )
+
+    pk_debut = models.DecimalField(max_digits=10, decimal_places=3, verbose_name='PK Début')
+    pk_fin = models.DecimalField(max_digits=10, decimal_places=3, verbose_name='PK Fin')
+    description = models.CharField(max_length=255, blank=True, null=True, verbose_name='Description du tronçon')
 
     class Meta:
         verbose_name = "PK du Marché"
         verbose_name_plural = "PK des Marchés"
         ordering = ['marche', 'pk_debut']
-        
-        # Note : La contrainte UniqueConstraint sur pk_debut empêchera 
-        # d'avoir deux segments commençant au même point exact. 
-        # Si c'est ce que vous voulez, gardez-la. Sinon, supprimez-la.
-        constraints = [
-            models.UniqueConstraint(
-                fields=['marche', 'pk_debut'],
-                name='unique_pk_debut_par_marche'
-            )
-        ]
 
     def __str__(self):
         return f"{self.marche} : PK {self.pk_debut} → {self.pk_fin}"
-
 
 
 class Avancement(models.Model):
@@ -913,4 +912,50 @@ class TravauxGlisse(models.Model): # Majuscules et singulier
         # Logique : l'année de report doit être après l'année d'origine
         if self.annee_report <= self.annee_origine:
             raise ValidationError("L'année de report doit être supérieure à l'année d'origine.")
+
+
+class MessageMarche(models.Model):
+    """
+    Message échangé entre utilisateurs à propos d'un marché (onglet Discussion).
+
+    Fil chronologique plat : chaque message porte son auteur et sa date, il n'y a
+    pas de réponses imbriquées. L'auteur est l'utilisateur Django connecté, injecté
+    côté vue — jamais fourni par le client.
+    """
+
+    marche = models.ForeignKey(
+        'Marche',
+        on_delete=models.CASCADE,
+        related_name='messages'
+    )
+
+    # SET_NULL : la suppression d'un compte ne doit pas effacer l'historique
+    # des échanges, seulement l'attribution du message.
+    auteur = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='messages_marche'
+    )
+
+    contenu = models.TextField(blank=True, default='')
+    fichier = models.FileField(
+        upload_to='travaux/discussions/%Y/%m/',
+        blank=True,
+        null=True
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['marche', 'created_at']),
+        ]
+
+    def __str__(self):
+        nom = self.auteur.username if self.auteur else 'Utilisateur supprimé'
+        return f"{nom} — {self.marche.num_marche or self.marche.pk}"
     
