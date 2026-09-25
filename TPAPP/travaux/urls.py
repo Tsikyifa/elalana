@@ -21,7 +21,7 @@ from .views import (
     CPDeleteView
 )
 from . import views
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, RedirectView
 
 urlpatterns = [
     path('login/', CustomAuthToken.as_view(), name='api_login'),
@@ -45,7 +45,7 @@ urlpatterns = [
     path('export/reporting/pdf/', views.export_reporting_pdf, name='export_reporting_pdf'),
     # 2. La route pour la maintenance (BIEN SÉPARÉE ICI)
     path('maintenance/', 
-         TemplateView.as_view(template_name="maintenance.html"), 
+         RedirectView.as_view(url='/', permanent=False), 
          name='maintenance'),
      path(
           "marche/<uuid:pk>/detail-modal/",
@@ -94,3 +94,4 @@ urlpatterns = [
         name='export_marches'
     ),
 ]
+
