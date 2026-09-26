@@ -98,11 +98,11 @@ os.environ["PGCLIENTENCODING"] = "UTF8"
 DATABASES = {
     "default": {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'tpdb', #elalanam_tpdb
-        'USER': 'tp_admin', # elalanam_tp_admin
-        'PASSWORD': 'tp_admin_Yes_2026',
-        'HOST': 'localhost',      # Ou l'IP de votre serveur
-        'PORT': '5432',           # Port par défaut de Postgres
+        'NAME': os.getenv('DB_NAME'),
+        'USER': os.getenv('DB_USER'),
+        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'HOST': os.getenv('DB_HOST'),
+        'PORT': os.getenv('DB_PORT'),
     }
 }
 
