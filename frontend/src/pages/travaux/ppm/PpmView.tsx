@@ -17,6 +17,7 @@ function marcheToRow(m: MarcheItem): PpmRow {
   const situation = av?.situation_w_display ?? m.etape_actuelle_display ?? '—'
   return {
     id: String(m.id),
+    axe_id: m.axe ?? undefined,
     objet: m.resume ?? m.description ?? '(Sans objet)',
     axe: m.axe_detail?.designation ?? m.axe ?? '—',
     region: '',
@@ -160,7 +161,15 @@ export function PpmView() {
     try {
       await deleteMarche(rowId)
       setMarches((prev) => prev.filter((m) => String(m.id) !== rowId))
-    } catch {
+      await loadMarches()
+      window.dispatchEvent(new CustomEvent('marche:created'))
+    } catch (error: any) {
+      if (error?.status === 404) {
+        setMarches((prev) => prev.filter((m) => String(m.id) !== rowId))
+        await loadMarches()
+        window.dispatchEvent(new CustomEvent('marche:created'))
+        return
+      }
       alert('Erreur lors de la suppression du marché.')
     }
   }

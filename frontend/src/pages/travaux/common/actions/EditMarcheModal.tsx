@@ -1,5 +1,7 @@
 import { CalendarBlank, CurrencyCircleDollar, MagnifyingGlass, MapPin, Stack } from '@phosphor-icons/react'
 import type { PpmRow } from '../../ppm/types'
+import type { MarcheItem } from '../../../../types/travaux'
+import { updateMarche } from '../../../../api/travaux.api'
 
 type EditMarcheModalProps = {
   market: PpmRow
@@ -8,7 +10,90 @@ type EditMarcheModalProps = {
 
 export default function EditMarcheModal({ market, onClose }: EditMarcheModalProps) {
   return (
-    <form className="panel-body marche-form" onSubmit={(e) => { e.preventDefault(); onClose() }}>
+    <form className="panel-body marche-form" onSubmit={async (e) => {
+      e.preventDefault();
+      try {
+        const isUuid = (value?: string | null) => !!value && /^[0-9a-fA-F-]{36}$/.test(value.trim())
+        const axeSelect = document.getElementById('ppm-axe') as HTMLSelectElement | null
+        const selectedAxeValue = axeSelect?.value?.trim() ?? ''
+        const safeAxeValue = isUuid(selectedAxeValue) ? selectedAxeValue : market.axe_id
+
+        // Collect form data
+        // Prepare data for Marche update - collect values from form fields
+const marcheData: Partial<MarcheItem> = {
+          // Description: from either objet or description field (map to MarcheItem.description)
+          description: (document.getElementById('ppm-objet') as HTMLInputElement)?.value
+                      ?? (document.getElementById('ppm-description') as HTMLTextAreaElement)?.value
+                      ?? undefined,
+
+          // Resume: required field, map from description/objet (maps to MarcheItem.resume)
+          resume: (document.getElementById('ppm-objet') as HTMLInputElement)?.value
+                 ?? (document.getElementById('ppm-description') as HTMLTextAreaElement)?.value
+                 ?? undefined,
+
+          // Responsable: from responsable field (maps to MarcheItem.responsable)
+          responsable: (document.getElementById('ppm-responsable') as HTMLSelectElement)?.value
+                      ?? undefined,
+
+          // Axe: send the real backend UUID, never the human-readable designation.
+          axe: safeAxeValue,
+
+          // Financement: from financement field (maps to MarcheItem.financement)
+          financement: (document.getElementById('ppm-financement') as HTMLSelectElement)?.value
+                      ?? undefined,
+
+          // Numéro de marché: from num_marche field (maps to MarcheItem.num_marche)
+          num_marche: (document.getElementById('ppm-num-marche') as HTMLInputElement)?.value
+                      ?? undefined,
+
+          // Montant: from montant field (maps to MarcheItem.montant) - convert to number
+          montant: (document.getElementById('ppm-montant') as HTMLInputElement)?.value
+                  ? parseFloat((document.getElementById('ppm-montant') as HTMLInputElement)?.value ?? '0')
+                  : undefined,
+
+          // Detail financement: from detail_fin field (maps to MarcheItem.detail_financement)
+          detail_financement: (document.getElementById('ppm-detail-fin') as HTMLInputElement)?.value
+                          ?? undefined,
+
+          // Titulaire: from titulaire field (maps to MarcheItem.titulaire)
+          titulaire: (document.getElementById('ppm-titulaire') as HTMLInputElement)?.value
+                  ?? undefined,
+
+          // Délai contractuel
+          delai_nombre: (document.getElementById('ppm-delai-nombre') as HTMLInputElement)?.value
+                  ? parseInt((document.getElementById('ppm-delai-nombre') as HTMLInputElement)?.value ?? '0')
+                  : undefined,
+
+          delai_unit: (document.querySelector('#ppm-delai-nombre + select') as HTMLSelectElement)?.value
+                  ?? undefined,
+
+          delai_jours: (document.querySelector('#ppm-delai-nombre + select + input') as HTMLInputElement)?.value
+                  ? parseInt((document.querySelector('#ppm-delai-nombre + select + input') as HTMLInputElement)?.value ?? '0')
+                  : undefined,
+
+          // Marché anticipé checkbox (maps to MarcheItem.est_anticipe)
+          est_anticipe: (document.getElementById('est-anticipe-modal') as HTMLInputElement)?.checked
+                  ?? false,
+        };
+
+        // Remove undefined values so PATCH only sends fields that were explicitly set
+        Object.entries(marcheData).forEach(([key, value]) => {
+          if (value === undefined) {
+            delete (marcheData as any)[key];
+          }
+        });
+
+        // Update the market
+        await updateMarche(market.id, marcheData);
+
+        // On success, close and refresh
+        onClose(true);
+      } catch (error) {
+        // On error, show alert and close without refresh
+        alert('Erreur lors de l\'enregistrement des modifications du marché.');
+        onClose(false);
+      }
+    }}>
       {/* 1. IDENTIFICATION ET AXE */}
       <div className="row g-3 mb-4 p-3 bg-white rounded shadow-sm mx-0">
         <div className="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom pb-2 mb-3">

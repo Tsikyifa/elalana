@@ -111,6 +111,7 @@ export default function OsAvenantModal({ market, onClose }: OsAvenantModalProps)
               } catch {
                 alert('Erreur lors de l\'enregistrement de l\'OS.')
                 setSaving(false)
+                onClose(false)
               }
             }}
           >

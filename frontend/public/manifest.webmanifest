@@ -1,0 +1,11 @@
+{
+  "name": "Elalana",
+  "short_name": "Elalana",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/logomtp.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#0f172a",
+  "background_color": "#ffffff",
+  "display": "standalone"
+}

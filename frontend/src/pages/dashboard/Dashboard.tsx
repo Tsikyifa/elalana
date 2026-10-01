@@ -37,6 +37,25 @@ export function Dashboard() {
 
   useEffect(() => {
     loadStats()
+
+    // Listen for advancement events to refresh dashboard stats
+    const handleAdvancementEvent = () => {
+      loadStats()
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('avancement:created', handleAdvancementEvent)
+      window.addEventListener('avancement:updated', handleAdvancementEvent)
+      window.addEventListener('avancement:deleted', handleAdvancementEvent)
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('avancement:created', handleAdvancementEvent)
+        window.removeEventListener('avancement:updated', handleAdvancementEvent)
+        window.removeEventListener('avancement:deleted', handleAdvancementEvent)
+      }
+    }
   }, [])
 
   const summaryCards = [

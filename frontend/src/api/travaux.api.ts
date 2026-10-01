@@ -33,8 +33,13 @@ export function fetchBacs() {
 }
 
 /** Axes routiers, pour le sélecteur « Axe routier ». */
-export function fetchAxes() {
-  return apiGet<AxeOption[]>('/travaux/axes/')
+export function fetchAxes(decoupage?: 'avec' | 'sans' | '') {
+  const q = new URLSearchParams()
+  if (decoupage) q.append('decoupage', decoupage)
+  // cache-buster
+  q.append('_', String(Date.now()))
+  const qs = q.toString() ? `?${q.toString()}` : ''
+  return apiGet<AxeOption[]>(`/travaux/axes/${qs}`)
 }
 
 export function createBac(payload: Record<string, unknown>, image?: File | null) {
@@ -83,7 +88,8 @@ export function fetchMarches(params?: { q?: string; axe?: string; status_scope?:
   if (params?.status_scope) query.append('status_scope', params.status_scope)
   if (params?.financement) query.append('financement', params.financement)
 
-  const queryString = query.toString() ? `?${query.toString()}` : ''
+  query.append('_', String(Date.now()))
+  const queryString = `?${query.toString()}`
   return apiGet<MarcheItem[]>(`/travaux/marches/${queryString}`)
 }
 

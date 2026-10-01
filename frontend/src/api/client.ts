@@ -83,6 +83,7 @@ export async function apiGet<T>(path: string): Promise<T> {
     method: 'GET',
     credentials: 'include',
     headers: JSON_HEADERS,
+    cache: 'no-store',
   })
 
   if (!response.ok) {
@@ -98,6 +99,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
     credentials: 'include',
     headers: JSON_HEADERS,
     body: JSON.stringify(body),
+    cache: 'no-store',
   })
 
   if (!response.ok) {
@@ -116,6 +118,7 @@ export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
     method: 'POST',
     credentials: 'include',
     body: form,
+    cache: 'no-store',
   })
 
   if (!response.ok) {
@@ -131,6 +134,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
     credentials: 'include',
     headers: JSON_HEADERS,
     body: JSON.stringify(body),
+    cache: 'no-store',
   })
 
   if (!response.ok) {
@@ -146,6 +150,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
     credentials: 'include',
     headers: JSON_HEADERS,
     body: JSON.stringify(body),
+    cache: 'no-store',
   })
 
   if (!response.ok) {
@@ -160,6 +165,7 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
     method: 'DELETE',
     credentials: 'include',
     headers: JSON_HEADERS,
+    cache: 'no-store',
   })
 
   if (!response.ok) {

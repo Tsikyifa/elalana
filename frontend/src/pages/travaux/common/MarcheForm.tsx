@@ -8,7 +8,6 @@ import {
   Stack,
 } from '@phosphor-icons/react'
 import { createMarche, fetchAxes } from '../../../api/travaux.api'
-import { REGION_CHOICES } from '../bac/bacOptions'
 import { ApiError } from '../../../api/client'
 import type { AxeOption } from '../../../types/travaux'
 
@@ -43,7 +42,6 @@ export default function MarcheForm({
   const [estAnticipe, setEstAnticipe] = useState(false)
   const [etapeActuelle, setEtapeActuelle] = useState('EXE')
   const [axe, setAxe] = useState('')
-  const [region, setRegion] = useState('')
   const [resume, setResume] = useState('')
   const [description, setDescription] = useState('')
   const [responsable, setResponsable] = useState('')
@@ -162,7 +160,6 @@ export default function MarcheForm({
         est_anticipe: estAnticipe,
         etape_actuelle: etapeActuelle || 'EXE',
         axe,
-        region: region || undefined,
         resume,
         description,
         responsable: responsable || undefined,
@@ -270,13 +267,7 @@ export default function MarcheForm({
               </div>
 
               <div className="col-md-4">
-                <label className="form-label fw-bold small">RÉGION</label>
-                <select className="filter-select" value={region} onChange={(e) => setRegion(e.target.value)}>
-                  <option value="">-- Non spécifié --</option>
-                  {REGION_CHOICES.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
+                {/* Région : supprimée — déterminée automatiquement par l'axe et les PK */}
               </div>
 
               <div className="col-md-4">

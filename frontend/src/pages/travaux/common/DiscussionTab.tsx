@@ -6,7 +6,6 @@ import {
   FileText,
   HandWaving,
   HardHat,
-  Image as ImageIcon,
   Paperclip,
   PaperPlaneRight,
   Smiley,

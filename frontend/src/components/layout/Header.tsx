@@ -35,9 +35,13 @@ export function Header({ activePage, onLogout, mobileSidebarOpen, onToggleMobile
       </div>
 
       <div className="app-header__right d-flex align-items-center gap-3">
-        <button type="button" className="app-header__notify" aria-label="Notifications">
+        <button
+          type="button"
+          className="app-header__notify"
+          aria-label="Notifications"
+          onClick={() => window.alert('Les notifications ne sont pas encore disponibles.')}
+        >
           <Bell size={16} />
-          <span className="app-header__notify-badge">3</span>
         </button>
 
         <div className="app-header__actions">

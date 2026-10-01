@@ -98,6 +98,25 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
 
   useEffect(() => {
     loadMarche()
+
+    // Listen for advancement events to refresh data
+    const handleAvancementEvent = () => {
+      loadMarche()
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('avancement:created', handleAvancementEvent)
+      window.addEventListener('avancement:updated', handleAvancementEvent)
+      window.addEventListener('avancement:deleted', handleAvancementEvent)
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('avancement:created', handleAvancementEvent)
+        window.removeEventListener('avancement:updated', handleAvancementEvent)
+        window.removeEventListener('avancement:deleted', handleAvancementEvent)
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [marcheId])
 
@@ -458,6 +477,9 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                                     if (!window.confirm('Supprimer ce relevé d\'avancement ?')) return
                                     try {
                                       await deleteAvancement(a.id)
+                                      if (typeof window !== 'undefined') {
+                                        window.dispatchEvent(new CustomEvent('avancement:deleted'))
+                                      }
                                       await loadMarche()
                                     } catch {
                                       alert('Impossible de supprimer le relevé.')

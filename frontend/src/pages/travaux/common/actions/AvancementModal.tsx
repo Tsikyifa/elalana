@@ -187,13 +187,20 @@ export default function AvancementModal({ market, onClose, avancement = null }: 
               if (avancement && avancement.id) {
                 // Update existing avancement (no file upload for edit)
                 await updateAvancement(avancement.id, payload)
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('avancement:updated'))
+                }
               } else {
                 await createAvancement(payload, file, legend)
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('avancement:created'))
+                }
               }
               onClose(true)
             } catch {
               alert('Erreur lors de l\'enregistrement du relevé.')
               setSaving(false)
+              onClose(false)
             }
           }}
         >

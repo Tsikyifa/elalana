@@ -201,6 +201,8 @@ export type MarcheItem = {
   date_demarrage_effective?: string | null
   date_fin_actualisee?: string | null
   longueur_totale?: number
+  pk_debut?: number | null
+  pk_fin?: number | null
   segments_pk?: PKMarcheItem[]
   ordres_service?: OSItem[]
   avancements?: AvancementItem[]

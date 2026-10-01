@@ -10,7 +10,7 @@ import {
   SpinnerGap,
   WarningCircle,
 } from '@phosphor-icons/react'
-import { deleteMarche, fetchDashboardStats, fetchMarches } from '../../../api/travaux.api'
+import { deleteMarche, fetchDashboardStats, fetchMarches, fetchAxes } from '../../../api/travaux.api'
 import type { DashboardStatsResponse, MarcheItem } from '../../../types/travaux'
 import type { PpmRow } from '../ppm/types'
 import { buildHash } from '../../../routes/hashRoute'
@@ -37,6 +37,8 @@ function marcheToRow(m: MarcheItem): PpmRow {
     financier: av ? pct(av.avancement_financier) : '0%',
     situation,
     en_retard: av?.est_en_retard ?? false,
+    pk_debut: (m as any).pk_debut ?? null,
+    pk_fin: (m as any).pk_fin ?? null,
   }
 }
 
@@ -53,6 +55,9 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
   const [viewType, setViewType] = useState<'axe' | 'region' | 'titulaire'>('axe')
   const [regionFilter, setRegionFilter] = useState('')
   const [axeFilter, setAxeFilter] = useState('')
+  const [decoupageFilter, setDecoupageFilter] = useState<'' | 'avec' | 'sans'>('')
+  const [axesAvecDecoupage, setAxesAvecDecoupage] = useState<string[]>([])
+  const [axisSegmentsMap, setAxisSegmentsMap] = useState<Record<string, Array<{pk_debut: number; pk_fin: number; deb?: string; fin?: string}>>>({})
   const [titulaireFilter, setTitulaireFilter] = useState('')
   const [financementFilter, setFinancementFilter] = useState('')
   const [typeAxeFilter, setTypeAxeFilter] = useState('')
@@ -77,7 +82,7 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
       setStats(statsData)
       setMarches(marchesData ?? [])
     } catch {
-      // Keep existing or handle silently
+      alert('Erreur lors du chargement des données. Veuillez réessayer.')
     } finally {
       setLoading(false)
     }
@@ -108,6 +113,12 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
 
   // Build rows and grouping similar to PpmView
   const allRows: PpmRow[] = useMemo(() => marches.map(marcheToRow), [marches])
+
+  const normalizeAxeName = (value?: string | null) => (value ?? '').trim().toLowerCase()
+  const axesAvecDecoupageSet = useMemo(
+    () => new Set(axesAvecDecoupage.map((v) => normalizeAxeName(v)).filter(Boolean)),
+    [axesAvecDecoupage],
+  )
 
   // Options dynamiques pour les sélecteurs de filtre
   const axeOptions = useMemo(() => [...new Set(allRows.map((r) => r.axe).filter(Boolean))].sort(), [allRows])
@@ -141,23 +152,53 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
       setRegionFilter('')
       setTitulaireFilter('')
       setTypeAxeFilter('')
+      // keep decoupage when switching to axe
     } else if (nextView === 'region') {
       setAxeFilter('')
       setTitulaireFilter('')
       setTypeAxeFilter('')
+      setDecoupageFilter('')
     } else {
       setAxeFilter('')
       setRegionFilter('')
       setTypeAxeFilter('')
+      setDecoupageFilter('')
     }
   }
+
+  // Charger la liste des axes qui ont un découpage PK (backend filter decoupage=avec)
+  useEffect(() => {
+    let mounted = true
+    fetchAxes('avec')
+      .then((data) => {
+        if (!mounted || !data) return
+        const list = data.map((a) => (a.designation ? a.designation : (a as any).designation)).filter(Boolean) as string[]
+        setAxesAvecDecoupage(list)
+        // build segments map (backend may return different field names)
+        const map: Record<string, Array<{pk_debut: number; pk_fin: number; deb?: string; fin?: string}>> = {}
+        for (const a of data) {
+          const name = (a as any).designation
+          const segs = (a as any).segments_districts || (a as any).segments || (a as any).segments_district || []
+          if (Array.isArray(segs) && segs.length) {
+            map[name] = segs.map((s: any) => ({ pk_debut: Number(s.pk_debut ?? s.pk_debut_raw ?? 0), pk_fin: Number(s.pk_fin ?? s.pk_fin_raw ?? 0), deb: s.deb || s.localite_deb || s.start || s.from, fin: s.fin || s.localite_fin || s.end || s.to }))
+          }
+        }
+        setAxisSegmentsMap(map)
+      })
+      .catch(() => {
+        if (mounted) setAxesAvecDecoupage([])
+      })
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const filteredGroups = useMemo(
     () =>
       groups
         .map((group) => ({
           ...group,
-          items: group.items.filter((row) => {
+            items: group.items.filter((row) => {
             const q = query.trim().toLowerCase()
             const matchesQuery = !q || `${row.objet} ${row.titulaire} ${row.financement}`.toLowerCase().includes(q)
             const matchesScope =
@@ -174,6 +215,12 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
             const matchesRetard =
               !retardFilter ||
               (retardFilter === 'yes' ? row.en_retard === true : retardFilter === 'no' ? row.en_retard === false : true)
+            const axeName = normalizeAxeName(row.axe)
+            const axeDetailName = normalizeAxeName((row as any)?.axe_detail?.designation)
+            const matchesDecoupage =
+              !decoupageFilter ||
+              (decoupageFilter === 'avec' && (axesAvecDecoupageSet.has(axeName) || axesAvecDecoupageSet.has(axeDetailName))) ||
+              (decoupageFilter === 'sans' && !axesAvecDecoupageSet.has(axeName) && !axesAvecDecoupageSet.has(axeDetailName))
             return (
               matchesQuery &&
               matchesScope &&
@@ -183,12 +230,13 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
               matchesFin &&
               matchesTypeAxe &&
               matchesSituation &&
-              matchesRetard
+              matchesRetard &&
+              matchesDecoupage
             )
           }),
         }))
         .filter((group) => group.items.length > 0),
-    [groups, query, scopeFilter, regionFilter, axeFilter, titulaireFilter, financementFilter, typeAxeFilter, situationFilter, retardFilter],
+    [groups, query, scopeFilter, regionFilter, axeFilter, titulaireFilter, financementFilter, typeAxeFilter, situationFilter, retardFilter, decoupageFilter, axesAvecDecoupageSet],
   )
 
   // grouping is handled by `groups` / `filteredGroups` below
@@ -210,7 +258,15 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
     try {
       await deleteMarche(row.id)
       setMarches((prev) => prev.filter((m) => String(m.id) !== row.id))
-    } catch {
+      await loadData()
+      window.dispatchEvent(new CustomEvent('marche:created'))
+    } catch (error: any) {
+      if (error?.status === 404) {
+        setMarches((prev) => prev.filter((m) => String(m.id) !== row.id))
+        await loadData()
+        window.dispatchEvent(new CustomEvent('marche:created'))
+        return
+      }
       alert('Erreur lors de la suppression du marché.')
     }
   }
@@ -228,6 +284,7 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
       hint: 'Projets répertoriés',
       tone: 'primary',
       icon: ChartBar,
+      kind: 'metric',
     },
     {
       label: 'Marchés en retard',
@@ -235,13 +292,23 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
       hint: 'Nécessitent une intervention',
       tone: 'danger',
       icon: WarningCircle,
+      kind: 'metric',
     },
     {
-      label: 'Marchés achevés',
+      label: 'Travaux réceptionnés',
       value: stats ? String(stats.summary_cards.marches_acheves) : '—',
       hint: 'Travaux réceptionnés',
       tone: 'success',
       icon: CheckCircle,
+      kind: 'metric',
+    },
+    {
+      label: 'Nouveau marché',
+      value: '',
+      hint: 'Action rapide',
+      tone: 'info',
+      icon: PlusSquare,
+      kind: 'action',
     },
   ]
 
@@ -256,19 +323,36 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* ─── KPI Summary Cards ─── */}
-      <div className="metrics-grid">
-      {summaryCards.map(({ label, value, hint, tone, icon: Icon }) => (
-          <article key={label} className={`summary-card summary-card--${tone}`}>
-            <div className="summary-card__top">
-              <span className="summary-card__icon">
-                <Icon size={18} weight="regular" aria-hidden="true" />
-              </span>
-              <span className="summary-card__trend">{hint}</span>
-            </div>
-            <span className="summary-card__label">{label}</span>
-            <strong>{value}</strong>
-          </article>
-        ))}
+      <div className="avancement-summary-grid">
+      {summaryCards.map(({ label, value, hint, tone, icon: Icon, kind }) => {
+          const isAction = kind === 'action'
+          return (
+            <article key={label} className={`summary-card summary-card--${tone} ${isAction ? 'summary-card--action' : ''}`}>
+              {isAction ? (
+                <button
+                  type="button"
+                  className="summary-card__action-button"
+                  onClick={onNewMarche}
+                  aria-label={label}
+                >
+                  <span className="summary-card__action-plus" aria-hidden="true">+</span>
+                  <span className="summary-card__label summary-card__label--muted">{label}</span>
+                </button>
+              ) : (
+                <>
+                  <div className="summary-card__top">
+                    <span className="summary-card__icon">
+                      <Icon size={18} weight="regular" aria-hidden="true" />
+                    </span>
+                    <span className="summary-card__trend">{hint}</span>
+                  </div>
+                  <span className="summary-card__label">{label}</span>
+                  <strong>{value}</strong>
+                </>
+              )}
+            </article>
+          )
+        })}
       </div>
 
       {/* Récapitulatif par Source de Financement supprimé par demande */}
@@ -277,9 +361,9 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
       <div className="panel ppm-search-panel" style={{ margin: 0 }}>
         <div className="panel-header">
           <h2>Recherche</h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="avancement-search-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {onNewMarche && (
-              <button type="button" className="btn btn-primary btn-sm" onClick={onNewMarche}>
+              <button type="button" className="btn btn-primary btn-sm avancement-search-new" onClick={onNewMarche}>
                 Nouveau marché
               </button>
             )}
@@ -371,6 +455,17 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
               </div>
             )}
 
+            {showAxeFilter && (
+              <div className="col-md-2">
+                <label className="form-label small fw-bold">Découpage PK</label>
+                <select className="form-select form-select-sm" value={decoupageFilter} onChange={(e) => setDecoupageFilter(e.target.value as any)}>
+                  <option value="">Tous</option>
+                  <option value="avec">Avec découpage</option>
+                  <option value="sans">Sans découpage</option>
+                </select>
+              </div>
+            )}
+
             {showRegionFilter && (
               <div className="col-md-2">
                 <label className="form-label small fw-bold">Région</label>
@@ -456,6 +551,9 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
                       <span className="district-header__count">{group.items.length}</span>
                     </div>
                   </div>
+                  {/* per-axis découpage header removed; PK shown in main table below */}
+
+                  {/* per-market PK sub-table removed; PK column moved into main table */}
 
                   <div className="table-card">
                     <table className="table-fixed">
@@ -463,6 +561,9 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
                         <tr>
                           <th rowSpan={2} style={{ width: 40, textAlign: 'center' }}>#</th>
                           <th rowSpan={2}>Objet</th>
+                          {decoupageFilter === 'avec' && group.items.some((r) => r.pk_debut !== undefined && r.pk_fin !== undefined && r.pk_debut !== null && r.pk_fin !== null) && (
+                            <th rowSpan={2} style={{ width: 160, textAlign: 'center' }}>PK début → fin</th>
+                          )}
                           <th rowSpan={2} className="text-center">MDC</th>
                           <th rowSpan={2}>Titulaire</th>
                           <th rowSpan={2}>Financement</th>
@@ -484,6 +585,9 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
                           <tr key={row.id} onClick={() => openModal('detail', row)} style={{ cursor: 'pointer' }}>
                             <td className="text-center fw-bold">{idx + 1}</td>
                             <td style={{ whiteSpace: 'normal' }}>{row.objet}</td>
+                            {decoupageFilter === 'avec' && row.pk_debut !== undefined && row.pk_fin !== undefined && row.pk_debut !== null && row.pk_fin !== null && (
+                              <td className="text-center small text-muted">{`${Number(row.pk_debut).toFixed(3)} → ${Number(row.pk_fin).toFixed(3)}`}</td>
+                            )}
                             <td className="text-center"><span className="badge">{row.mdc}</span></td>
                             <td>{row.titulaire}</td>
                             <td>{row.financement}</td>

@@ -16,6 +16,8 @@ import { logout } from './api/auth.api'
 
 export type { AppPage } from './routes/hashRoute'
 
+const AUTH_STORAGE_KEY = 'app-auth-state'
+
 /** `checking` tant que la session n'a pas été validée : on ne sait pas encore quoi afficher. */
 type Session = 'checking' | 'authenticated' | 'anonymous'
 
@@ -46,11 +48,20 @@ function App() {
     [navigate],
   )
 
-  // Verify session on mount so a page refresh keeps the user logged in
+  // Verify session on mount so a page refresh keeps the user logged in.
+  // The persisted auth flag is a safety net: if the user explicitly logged out,
+  // a refresh must not restore the dashboard from a stale cookie.
   useEffect(() => {
     let mounted = true
 
     async function checkSession() {
+      const storedState = window.localStorage.getItem(AUTH_STORAGE_KEY)
+
+      if (storedState === 'anonymous') {
+        if (mounted) setSession('anonymous')
+        return
+      }
+
       try {
         const res = await fetch(`${API_BASE_URL}/intervenants/`, {
           method: 'GET',
@@ -59,10 +70,16 @@ function App() {
         })
 
         if (!mounted) return
-        setSession(res.ok ? 'authenticated' : 'anonymous')
+
+        const nextSession: Session = res.ok ? 'authenticated' : 'anonymous'
+        window.localStorage.setItem(AUTH_STORAGE_KEY, nextSession)
+        setSession(nextSession)
       } catch {
         // Réseau injoignable : on traite comme une session absente.
-        if (mounted) setSession('anonymous')
+        if (mounted) {
+          window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
+          setSession('anonymous')
+        }
       }
     }
 
@@ -102,14 +119,21 @@ function App() {
     } catch {
       // Session déjà invalide côté serveur : le cookie est de toute façon abandonné.
     }
+
+    document.cookie = 'access=; Max-Age=0; path=/; SameSite=Lax'
+    window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
     setSession('anonymous')
-  }, [])
+    navigate({ page: LOGIN_PAGE, tab: null })
+  }, [navigate])
 
   // while checking authentication, render nothing to avoid flashing login
   if (session === 'checking') return null
 
   if (session === 'anonymous' || route.page === LOGIN_PAGE) {
-    return <Login onLogin={() => setSession('authenticated')} />
+    return <Login onLogin={() => {
+      window.localStorage.setItem(AUTH_STORAGE_KEY, 'authenticated')
+      setSession('authenticated')
+    }} />
   }
 
   return (

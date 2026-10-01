@@ -6,8 +6,8 @@ import { MOBILE_QUERY, useMediaQuery } from '../../hooks/useMediaQuery'
 import { ProfileMenu } from './ProfileMenu'
 
 const items: Array<{ key: AppPage; label: string; icon: typeof House }> = [
-  { key: 'dashboard', label: 'Accueil', icon: House },
-  { key: 'travaux', label: 'Travaux', icon: Briefcase },
+  { key: 'dashboard', label: 'Tableau de bord', icon: House },
+  { key: 'travaux', label: 'Avancement', icon: Briefcase },
   { key: 'bac', label: 'Bac', icon: AnchorSimple },
   { key: 'cp', label: 'Convention Programme', icon: ChartBar },
   { key: 'annuaire', label: 'Annuaire', icon: BookOpen },
