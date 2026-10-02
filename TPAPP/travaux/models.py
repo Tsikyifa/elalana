@@ -3,6 +3,7 @@ import uuid
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.dispatch import receiver
 from django.db.models.signals import post_save
@@ -239,8 +240,9 @@ class Marche(models.Model):
     tiers = models.CharField(max_length=100)
     montant = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
     titulaire = models.CharField(max_length=255)
-    # Optionnel: région associée au marché (saisie utilisateur)
-    region = models.CharField(max_length=64, blank=True, null=True)
+    # NOTE: Le champ `region` est désormais calculé automatiquement
+    # via l'axe et les segments PK (pk_debut/pk_fin). On expose
+    # une propriété `region` en lecture seule pour compatibilité.
 
     os_com = models.DateField(blank=True, null=True)
     DELAI_UNIT_CHOICES = [
@@ -363,10 +365,25 @@ class Marche(models.Model):
         for seg_m in segments_marche:
             for seg_d in segments_districts:
 
-                if (
-                    seg_d.pk_debut < seg_m.pk_fin and
-                    seg_d.pk_fin > seg_m.pk_debut
-                ):
+                # Défensive: s'assurer que les PK existent et sont des Decimals
+                try:
+                    m_deb = Decimal(seg_m.pk_debut)
+                    m_fin = Decimal(seg_m.pk_fin)
+                    d_deb = Decimal(seg_d.pk_debut)
+                    d_fin = Decimal(seg_d.pk_fin)
+                except (TypeError, InvalidOperation):
+                    # Si une valeur est manquante ou non numérique, on ignore ce couple
+                    continue
+
+                # Normaliser l'ordre (au cas où les données seraient mal formatées)
+                if m_deb > m_fin:
+                    m_deb, m_fin = m_fin, m_deb
+                if d_deb > d_fin:
+                    d_deb, d_fin = d_fin, d_deb
+
+                # Intersection inclusive des intervalles [d_deb, d_fin] et [m_deb, m_fin]
+                # On accepte les cas où les bornes se touchent (ex: pk_fin == pk_debut)
+                if not (m_fin < d_deb or m_deb > d_fin):
                     if seg_d.district:
                         districts.add(seg_d.district)
 
@@ -375,6 +392,20 @@ class Marche(models.Model):
     @property
     def regions_touchees(self):
         return set(d.region for d in self.districts_touches)
+
+    @property
+    def region(self):
+        """
+        Valeur affichable de la/les région(s) touchée(s) par le marché.
+        Renvoie la/les étiquette(s) lisible(s) (ex: 'Analamanga') ou None.
+        """
+        codes = self.regions_touchees
+        if not codes:
+            return None
+        mapping = dict(Localisation.REGION_CHOICES)
+        labels = [mapping.get(code, code) for code in codes]
+        labels = sorted(labels)
+        return ", ".join(labels)
 
     # ============================
     # 🔹 AJOUT 4 (OPTIONNEL) : Longueur totale du marché
@@ -387,60 +418,16 @@ class Marche(models.Model):
         return round(total, 3)
 
     def __str__(self):
-        # 1. Validation de base (toujours possible)
-        if self.pk_debut is not None and self.pk_fin is not None:
-            if self.pk_debut >= self.pk_fin:
-                raise ValidationError("Le PK début doit être inférieur au PK fin.")
-
-        # 2. Validation des chevauchements (uniquement si l'axe est déjà sauvé)
-        # On vérifie si self.axe existe ET si son ID n'est pas None
-        if self.axe and self.axe.pk:
-            segments = PKDistrict.objects.filter(
-                axe=self.axe
-            ).exclude(id=self.id)
-
-            for segment in segments:
-                if not (self.pk_fin <= segment.pk_debut or self.pk_debut >= segment.pk_fin):
-                    raise ValidationError(
-                        f"Ce segment ({self.pk_debut}-{self.pk_fin}) chevauche "
-                        f"le segment existant ({segment.pk_debut}-{segment.pk_fin})."
-                    )
-        else:
-            # Si on est en train de créer l'Axe, on ne peut pas encore 
-            # vérifier les chevauchements en base de données via SQL.
-            pass
+        return self.resume or self.num_marche or f"Marché {self.pk}"
 
     def clean(self):
-        # 1. Vérification de présence
-        if self.pk_debut is None or self.pk_fin is None:
-            return
+        super().clean()
 
-        # 2. Cohérence mathématique
-        if self.pk_debut > self.pk_fin:
-            raise ValidationError({
-                'pk_fin': "Le PK de fin ne peut pas être inférieur au PK de début."
-            })
-
-        # 3. Validation des conflits
-        # Correction : On vérifie si self.marche a un ID (est déjà en base)
-        # et si self.marche_id n'est pas None (pour les formulaires)
-        if self.marche and self.marche.pk:
-            conflits = PKMarche.objects.filter(
-                marche=self.marche,
-                pk_debut__lt=self.pk_fin,
-                pk_fin__gt=self.pk_debut
-            ).exclude(id=self.id)
-
-            if conflits.exists():
-                c = conflits.first()
-                raise ValidationError(
-                    f"Conflit avec un segment existant : [{c.pk_debut} - {c.pk_fin}]"
-                )
     def save(self, *args, **kwargs):
-        # Important : appeler clean() manuellement pour que la validation 
-        # s'applique aussi hors formulaires (ex: script, shell)
         self.full_clean()
         super().save(*args, **kwargs)
+
+
 class PKMarche(models.Model):
 
     marche = models.ForeignKey(

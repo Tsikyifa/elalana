@@ -1,4 +1,5 @@
 # serializers.py
+from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .models import (
     Intervenant,
@@ -107,10 +108,26 @@ class AxeSerializer(serializers.ModelSerializer):
     """Version allégée de l'Axe, pour alimenter les listes déroulantes."""
 
     type_axe_display = serializers.CharField(source='get_type_axe_display', read_only=True)
+    # Expose les segments PKDistrict pour les clients qui veulent le découpage
+    # (utilisé par le frontend pour afficher PK début/fin lorsqu'on filtre "decoupage=avec").
+    segments_districts = serializers.SerializerMethodField()
 
     class Meta:
         model = Axe
-        fields = ['id', 'designation', 'type_axe', 'type_axe_display', 'longueur_total']
+        fields = ['id', 'designation', 'type_axe', 'type_axe_display', 'longueur_total', 'segments_districts']
+
+    def get_segments_districts(self, obj):
+        # Retourne une liste légère des segments liés à l'axe
+        segments = obj.segments_districts.all().order_by('pk_debut')
+        return [
+            {
+                'pk_debut': float(s.pk_debut) if s.pk_debut is not None else None,
+                'pk_fin': float(s.pk_fin) if s.pk_fin is not None else None,
+                'deb': s.deb,
+                'fin': s.fin,
+            }
+            for s in segments
+        ]
 
 
 class BacSerializer(serializers.ModelSerializer):
@@ -210,6 +227,7 @@ class AvancementDetailSerializer(AvancementSerializer):
 
 
 class MarcheListSerializer(serializers.ModelSerializer):
+    segments_pk = PKMarcheSerializer(many=True, read_only=True)
     axe_detail = AxeSerializer(source='axe', read_only=True)
     etape_actuelle_display = serializers.CharField(source='get_etape_actuelle_display', read_only=True)
     financement_display = serializers.CharField(source='get_financement_display', read_only=True)
@@ -217,6 +235,10 @@ class MarcheListSerializer(serializers.ModelSerializer):
     date_demarrage_effective = serializers.ReadOnlyField()
     date_fin_actualisee = serializers.ReadOnlyField()
     longueur_totale = serializers.ReadOnlyField()
+    pk_debut = serializers.SerializerMethodField()
+    pk_fin = serializers.SerializerMethodField()
+    # Expose la région calculée (propriété du modèle) en lecture seule
+    region = serializers.ReadOnlyField()
 
     class Meta:
         model = Marche
@@ -228,7 +250,7 @@ class MarcheListSerializer(serializers.ModelSerializer):
             'os_com', 'delai_unit', 'delai_nombre', 'delai_jours',
             'est_anticipe', 'etape_actuelle', 'etape_actuelle_display',
             'dernier_avancement', 'date_demarrage_effective',
-            'date_fin_actualisee', 'longueur_totale'
+            'date_fin_actualisee', 'longueur_totale', 'pk_debut', 'pk_fin', 'segments_pk',
         ]
 
     def get_dernier_avancement(self, obj):
@@ -244,6 +266,26 @@ class MarcheListSerializer(serializers.ModelSerializer):
             'est_en_retard': False,
         }
 
+    def get_pk_debut(self, obj):
+        segs = obj.segments_pk.all()
+        if not segs:
+            return None
+        try:
+            vals = [float(s.pk_debut) for s in segs if s.pk_debut is not None]
+            return round(min(vals), 3) if vals else None
+        except Exception:
+            return None
+
+    def get_pk_fin(self, obj):
+        segs = obj.segments_pk.all()
+        if not segs:
+            return None
+        try:
+            vals = [float(s.pk_fin) for s in segs if s.pk_fin is not None]
+            return round(max(vals), 3) if vals else None
+        except Exception:
+            return None
+
 
 class MarcheDetailSerializer(MarcheListSerializer):
     segments_pk = PKMarcheSerializer(many=True, read_only=True)
@@ -257,6 +299,18 @@ class MarcheDetailSerializer(MarcheListSerializer):
 class MarcheWriteSerializer(serializers.ModelSerializer):
     segments = PKMarcheSerializer(many=True, required=False, write_only=True)
     segments_pk = PKMarcheSerializer(many=True, required=False, write_only=True)
+    chef_de_projet = serializers.PrimaryKeyRelatedField(
+        queryset=get_user_model().objects.none(),
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+    attache_suivi = serializers.PrimaryKeyRelatedField(
+        queryset=get_user_model().objects.none(),
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
     responsable = serializers.ChoiceField(
         choices=Marche.resp_choice,
         required=False,
@@ -274,6 +328,16 @@ class MarcheWriteSerializer(serializers.ModelSerializer):
         model = Marche
         fields = '__all__'
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        pm_queryset = get_user_model().objects.filter(groups__name='chef_de_projet').distinct()
+        self.fields['chef_de_projet'].queryset = pm_queryset
+        self.fields['attache_suivi'].queryset = pm_queryset
+
+    # Accept an optional 'region' sent by the client (legacy frontends)
+    # but treat it as write-only and ignore it when creating/updating.
+    region = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
+
     def to_internal_value(self, data):
         data = data.copy()
         # Normalise les chaînes vides pour les choix optionnels
@@ -283,16 +347,42 @@ class MarcheWriteSerializer(serializers.ModelSerializer):
             data['categorie'] = None
         if 'num_marche' in data and data['num_marche'] in ('', None):
             data['num_marche'] = None
+
+        axe_value = data.get('axe')
+        if axe_value is not None and not isinstance(axe_value, (str, bytes)):
+            axe_value = str(axe_value)
+        if isinstance(axe_value, str) and axe_value.strip():
+            candidate = axe_value.strip()
+            try:
+                # Accept valid UUIDs as-is.
+                __import__('uuid').UUID(candidate)
+            except (ValueError, TypeError, AttributeError):
+                matching_axe = Axe.objects.filter(designation=candidate).order_by('designation').first()
+                if matching_axe is not None:
+                    data['axe'] = str(matching_axe.pk)
+
         return super().to_internal_value(data)
 
     def create(self, validated_data):
+        # Remove any legacy 'region' if present
+        validated_data.pop('region', None)
         segments_data = validated_data.pop('segments', None)
         segments_pk_data = validated_data.pop('segments_pk', None)
         all_segments = segments_data or segments_pk_data or []
+        assigned_pm = validated_data.pop('chef_de_projet', None)
+        if assigned_pm is None:
+            assigned_pm = validated_data.pop('attache_suivi', None)
 
         # Ensure region empty strings become None
         if 'region' in validated_data and validated_data['region'] == '':
             validated_data['region'] = None
+
+        axe = validated_data.get('axe')
+        if assigned_pm and axe is not None:
+            axe_obj = Axe.objects.filter(pk=axe.pk).first()
+            if axe_obj is not None:
+                axe_obj.attache_suivi = assigned_pm
+                axe_obj.save(update_fields=['attache_suivi'])
 
         marche = Marche.objects.create(**validated_data)
         for seg in all_segments:

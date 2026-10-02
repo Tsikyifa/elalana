@@ -1,0 +1,62 @@
+axe,pk_debut,pk_fin,district,region,deb,fin,section
+RN 1,0.000,0.670,TANA IV,ANALAMANGA,TANA IV,TANA IV,RN 1 - TANA IV
+RN 1,0.670,6.034,TANA IV,ANALAMANGA,TANA IV,TANA IV,RN 1 - TANA IV
+RN 1,6.034,16.435,Antananarivo-Atsimondrano,ANALAMANGA,Antananarivo-Atsimondrano,Antananarivo-Atsimondrano,RN 1 - Antananarivo-Atsimondrano
+RN 1,16.435,56.199,Arivonimamo,ITASY,Arivonimamo,Arivonimamo,RN 1 - Arivonimamo
+RN 1,56.199,145.456,Miarinarivo,ITASY,Miarinarivo,Miarinarivo,RN 1 - Miarinarivo
+RN 1,145.456,227.837,Tsiroanomandidy,BONGOLAVA,Tsiroanomandidy,Tsiroanomandidy,RN 1 - Tsiroanomandidy
+RN 2,0.000,1.742,TANA III,ANALAMANGA,TANA III,TANA III,RN 2 - TANA III
+RN 2,1.742,4.540,TANA V,ANALAMANGA,TANA V,TANA V,RN 2 - TANA V
+RN 2,4.540,19.063,Antananarivo-Avaradrano,ANALAMANGA,Antananarivo-Avaradrano,Antananarivo-Avaradrano,RN 2 - Antananarivo-Avaradrano
+RN 2,19.063,67.569,Manjakandriana,ANALAMANGA,Manjakandriana,Manjakandriana,RN 2 - Manjakandriana
+RN 2,67.569,168.400,Moramanga,ALAOTRA_MANGORO,Moramanga,Moramanga,RN 2 - Moramanga
+RN 2,168.400,298.725,Brickaville,ATSINANANA,Brickaville,Brickaville,RN 2 - Brickaville
+RN 2,298.725,341.671,Toamasina II,ATSINANANA,Toamasina II,Toamasina II,RN 2 - Toamasina II
+RN 2,341.671,350.242,Toamasina I,ATSINANANA,Toamasina I,Toamasina I,RN 2 - Toamasina I
+RN 4,0.000,2.081,TANA III,ANALAMANGA,TANA III,TANA III,RN 4 - TANA III
+RN 4,2.081,7.514,TANA VI,ANALAMANGA,TANA VI,TANA VI,RN 4 - TANA VI
+RN 4,7.514,38.071,Ambohidratrimo,ANALAMANGA,Ambohidratrimo,Ambohidratrimo,RN 4 - Ambohidratrimo
+RN 4,38.071,170.227,Ankazobe,ANALAMANGA,Ankazobe,Ankazobe,RN 4 - Ankazobe
+RN 4,170.227,171.224,Maevatanana,BETSIBOKA,Maevatanana,Maevatanana,RN 4 - Maevatanana
+RN 4,171.224,385.517,Maevatanana,BETSIBOKA,Maevatanana,Maevatanana,RN 4 - Maevatanana
+RN 4,385.517,386.040,Ambato Boeny,BOENY,Ambato Boeny,Ambato Boeny,RN 4 - Ambato Boeny
+RN 4,386.040,447.309,Ambato Boeny,BOENY,Ambato Boeny,Ambato Boeny,RN 4 - Ambato Boeny
+RN 4,447.309,508.067,Marovoay,BOENY,Marovoay,Marovoay,RN 4 - Marovoay
+RN 4,508.067,509.302,Mahajanga II,BOENY,Mahajanga II,Mahajanga II,RN 4 - Mahajanga II
+RN 4,509.302,510.028,Mahajanga II,BOENY,Mahajanga II,Mahajanga II,RN 4 - Mahajanga II
+RN 4,510.028,518.935,Marovoay,BOENY,Marovoay,Marovoay,RN 4 - Marovoay
+RN 4,518.935,520.067,Mahajanga II,BOENY,Mahajanga II,Mahajanga II,RN 4 - Mahajanga II
+RN 4,520.067,523.306,Marovoay,BOENY,Marovoay,Marovoay,RN 4 - Marovoay
+RN 4,523.306,524.006,Marovoay,BOENY,Marovoay,Marovoay,RN 4 - Marovoay
+RN 4,524.006,556.519,Mahajanga II,BOENY,Mahajanga II,Mahajanga II,RN 4 - Mahajanga II
+RN 4,556.519,564.410,Mahajanga I,BOENY,Mahajanga I,Mahajanga I,RN 4 - Mahajanga I
+RN 4,565.136,566.400,Mahajanga I,BOENY,Mahajanga I,Mahajanga I,RN 4 - Mahajanga I
+RN 7,0.000,1.525,TANA I,ANALAMANGA,TANA I,TANA I,RN 7 - TANA I
+RN 7,1.525,3.863,TANA IV,ANALAMANGA,TANA IV,TANA IV,RN 7 - TANA IV
+RN 7,3.863,5.964,Toliara I,ATSIMO_ANDREFANA,Toliara I,Toliara I,RN 7 - Toliara I
+RN 7,5.964,74.063,Toliara II,ATSIMO_ANDREFANA,Toliara II,Toliara II,RN 7 - Toliara II
+RN 7,74.063,78.918,Sakaraha,ATSIMO_ANDREFANA,Sakaraha,Sakaraha,RN 7 - Sakaraha
+RN 7,78.918,189.417,Sakaraha,ATSIMO_ANDREFANA,Sakaraha,Sakaraha,RN 7 - Sakaraha
+RN 7,189.417,396.059,Ihosy,IHOROMBE,Ihosy,Ihosy,RN 7 - Ihosy
+RN 7,396.059,476.728,Ambalavao,MATSIATRA_AMBONY,Ambalavao,Ambalavao,RN 7 - Ambalavao
+RN 7,476.728,511.984,Vohibato,MATSIATRA_AMBONY,Vohibato,Vohibato,RN 7 - Vohibato
+RN 7,511.984,524.469,Fianarantsoa I,MATSIATRA_AMBONY,Fianarantsoa I,Fianarantsoa I,RN 7 - Fianarantsoa I
+RN 7,524.469,551.116,Lalangina,MATSIATRA_AMBONY,Lalangina,Lalangina,RN 7 - Lalangina
+RN 7,551.116,617.146,Ambohimahasoa,MATSIATRA_AMBONY,Ambohimahasoa,Ambohimahasoa,RN 7 - Ambohimahasoa
+RN 7,617.146,622.103,Manandriana,AMORON_I_MANIA,Manandriana,Manandriana,RN 7 - Manandriana
+RN 7,622.103,625.837,Ambohimahasoa,MATSIATRA_AMBONY,Ambohimahasoa,Ambohimahasoa,RN 7 - Ambohimahasoa
+RN 7,625.837,724.936,Ambositra,AMORON_I_MANIA,Ambositra,Ambositra,RN 7 - Ambositra
+RN 7,724.936,741.648,Antsirabe II,VAKINANKARATRA,Antsirabe II,Antsirabe II,RN 7 - Antsirabe II
+RN 7,741.648,755.551,Antsirabe I,VAKINANKARATRA,Antsirabe I,Antsirabe I,RN 7 - Antsirabe I
+RN 7,755.551,791.591,Antsirabe II,VAKINANKARATRA,Antsirabe II,Antsirabe II,RN 7 - Antsirabe II
+RN 7,791.591,831.520,Antanifotsy,VAKINANKARATRA,Antanifotsy,Antanifotsy,RN 7 - Antanifotsy
+RN 7,831.520,884.829,Ambatolampy,VAKINANKARATRA,Ambatolampy,Ambatolampy,RN 7 - Ambatolampy
+RN 7,884.829,908.897,Antananarivo-Atsimondrano,ANALAMANGA,Antananarivo-Atsimondrano,Antananarivo-Atsimondrano,RN 7 - Antananarivo-Atsimondrano
+RN 7,908.897,913.430,TANA IV,ANALAMANGA,TANA IV,TANA IV,RN 7 - TANA IV
+RN 43,0.000,7.699,Miarinarivo,ITASY,Miarinarivo,Miarinarivo,RN 43 - Miarinarivo
+RN 43,7.699,48.162,Soavinandriana,ITASY,Soavinandriana,Soavinandriana,RN 43 - Soavinandriana
+RN 43,48.162,101.532,Faratsiho,VAKINANKARATRA,Faratsiho,Faratsiho,RN 43 - Faratsiho
+RN 43,101.532,124.794,Antsirabe II,VAKINANKARATRA,Antsirabe II,Antsirabe II,RN 43 - Antsirabe II
+RN 44,0.000,99.783,Moramanga,ALAOTRA_MANGORO,Moramanga,Moramanga,RN 44 - Moramanga
+RN 44,99.783,215.078,Ambatondrazaka,ALAOTRA_MANGORO,Ambatondrazaka,Ambatondrazaka,RN 44 - Ambatondrazaka
+RN 44,215.078,229.215,Amparafaravola,ALAOTRA_MANGORO,Amparafaravola,Amparafaravola,RN 44 - Amparafaravola

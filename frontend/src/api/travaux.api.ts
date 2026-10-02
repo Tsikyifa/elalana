@@ -74,8 +74,11 @@ export function deleteBac(id: string | number) {
 // ==========================================
 // TABLEAU DE BORD DÉCISIONNEL (STATS)
 // ==========================================
-export function fetchDashboardStats() {
-  return apiGet<DashboardStatsResponse>('/travaux/stats/dashboard/')
+export function fetchDashboardStats(period: 'mois' | 'trimestre' | 'annee' | 'tout' = 'annee') {
+  const query = new URLSearchParams()
+  query.append('periode', period)
+  query.append('_', String(Date.now()))
+  return apiGet<DashboardStatsResponse>(`/apitp/dashboard/stats/?${query.toString()}`)
 }
 
 // ==========================================
@@ -95,6 +98,32 @@ export function fetchMarches(params?: { q?: string; axe?: string; status_scope?:
 
 export function fetchMarche(id: string) {
   return apiGet<MarcheItem>(`/travaux/marches/${id}/`)
+}
+
+export type MarcheCartoFeatureCollection = {
+  type: 'FeatureCollection'
+  features: Array<{
+    type: 'Feature'
+    geometry: {
+      type: 'LineString'
+      coordinates: [number, number][]
+    }
+    properties: {
+      marche_id: string
+      resume: string
+      description?: string
+      pk_debut: number
+      pk_fin: number
+      etape_actuelle: string
+      color: string
+      axe_designation: string
+    }
+  }>
+}
+
+/** Tronçons GeoJSON d'un marché (PK calculés en EPSG:29701 côté backend). */
+export function fetchMarcheGeoJSON(id: string) {
+  return apiGet<MarcheCartoFeatureCollection>(`/carto/marche/${id}/`)
 }
 
 export function createMarche(payload: Partial<MarcheItem>) {

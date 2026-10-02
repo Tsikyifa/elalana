@@ -18,8 +18,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     raise RuntimeError("DJANGO_SECRET_KEY environment variable is not set")
-DEBUG = True
-ALLOWED_HOSTS = []
+DEBUG = False
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'dev.elalana.mg',
+    'back.elalana.mg',
+    'elalana.mg',
+]
 
 # Application definition
 
@@ -53,10 +59,8 @@ INSTALLED_APPS = [
     # Utilitaires
     'corsheaders',
     'import_export',
-    'om',
     'travaux',
     'apitp',
-    'audience',
 ]
 
 MIDDLEWARE = [
@@ -79,8 +83,8 @@ ROOT_URLCONF = "TPAPP.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / 'templates'],
-        "APP_DIRS": True,
+        "DIRS": [BASE_DIR / 'legacy_templates'],
+        "APP_DIRS": False,
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
@@ -150,6 +154,17 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://dev.elalana.mg",
+    "https://back.elalana.mg",
+    "https://elalana.mg",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://dev.elalana.mg",
+    "https://back.elalana.mg",
+    "https://elalana.mg",
+    "http://localhost:5173",
+    "http://localhost:3000",
 ]
 
 CORS_ALLOW_METHODS = [
@@ -219,5 +234,21 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 IMPORT_EXPORT_ENCODING = 'utf-8-sig' # Le '-sig' ajoute le BOM pour Excel
 IMPORT_EXPORT_SKIP_ADMIN_LOG = True
 
+# -------------------------------------------------------------------
+# COOKIES CROSS-DOMAIN (fix prod / cookies + CSRF)
+# -------------------------------------------------------------------
+SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_DOMAIN = '.elalana.mg'
 
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_DOMAIN = '.elalana.mg'
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://dev.elalana.mg',
+    'https://elalana.mg',
+    'https://www.elalana.mg',
+    'https://back.elalana.mg',
+]

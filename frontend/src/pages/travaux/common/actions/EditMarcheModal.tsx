@@ -85,6 +85,9 @@ const marcheData: Partial<MarcheItem> = {
 
         // Update the market
         await updateMarche(market.id, marcheData);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('marche:updated'));
+        }
 
         // On success, close and refresh
         onClose(true);

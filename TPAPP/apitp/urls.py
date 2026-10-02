@@ -17,6 +17,9 @@ from .views import (
     TravauxGlisseViewSet,
     ConventionProgrammeViewSet,
     DashboardStatsView,
+    MarcheCartoView,
+    CurrentUserView,
+    UserManagementView,
 )
 
 router = DefaultRouter()
@@ -38,6 +41,11 @@ router.register('travaux/glissements', TravauxGlisseViewSet, basename='glissemen
 router.register('travaux/conventions', ConventionProgrammeViewSet, basename='convention')
 
 urlpatterns = [
+    path('auth/me/', CurrentUserView.as_view(), name='api_current_user'),
+    path('users/', UserManagementView.as_view(), name='api_user_management'),
+    path('users/<int:user_id>/', UserManagementView.as_view(), name='api_user_management_detail'),
+    path('apitp/dashboard/stats/', DashboardStatsView.as_view(), name='api_apitp_dashboard_stats'),
     path('travaux/stats/dashboard/', DashboardStatsView.as_view(), name='api_dashboard_stats'),
+    path('carto/marche/<uuid:marche_id>/', MarcheCartoView.as_view(), name='api_marche_carto'),
 ] + router.urls
 

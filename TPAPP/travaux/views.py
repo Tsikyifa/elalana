@@ -7,7 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from .models import Marche, PKMarche, Localisation, Avancement, Axe, OS, Annuaire, Bac, ConventionProgramme, TravauxGlisse
 from .serializers import MarcheListSerializer
 from .filters import MarcheReportingFilter
-from .mixins import ChefAxeRequiredMixin, ChefMarcheRequiredMixin, SuiviPermissionMixin, AdminOrChefAxeMixin
+from .mixins import ChefAxeRequiredMixin, ChefMarcheRequiredMixin, SuiviPermissionMixin, AdminOrChefAxeMixin, filter_queryset_for_user
 from .forms import MarcheForm, PKMarcheFormSet, AvancementForm, MediaFormSet,AxeForm, PKDistrictFormSet, OSForm,PKDistrict, BacForm, CPForm, TravauxGlisseFormSet
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -60,12 +60,15 @@ class MarcheStatusViewSet(viewsets.ReadOnlyModelViewSet):
 
         queryset = Marche.objects.select_related(
             'axe'
+        ).prefetch_related(
+            Prefetch(
+                'avancements',
+                queryset=Avancement.objects.order_by('-date_avancement')[:1],
+                to_attr='dernier_avancement'
+            )
         ).order_by('axe__designation')
 
-        if user.is_superuser:
-            return queryset
-
-        return queryset.filter(axe__attache_suivi=user)
+        return filter_queryset_for_user(user, queryset)
 
 def staff_required(user):
     return user.is_staff
@@ -145,10 +148,9 @@ def reporting_view(request):
             # Un simple "Viewer" ne devrait pas avoir de résultats en mode édition
             queryset = queryset.none()
     else:
-        # MODE VUE : Tout le monde voit tout (ou selon votre politique)
-        # Si vous voulez que même en vue ils ne voient que leur axe, gardez votre filtre :
-        # if not user.is_superuser: queryset = queryset.filter(axe__attache_suivi=user)
-        pass
+        # MODE VUE : les chefs d'axe ne voient que les marchés liés à leur axe.
+        if not user.is_superuser and not user.is_staff:
+            queryset = filter_queryset_for_user(user, queryset)
 
     view_type = request.GET.get('view_type', 'axe')
     search_query = request.GET.get('q') # 1. On récupère la recherche

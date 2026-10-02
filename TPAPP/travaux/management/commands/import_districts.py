@@ -58,3 +58,5 @@ class Command(BaseCommand):
                 )
                 if created: count += 1
             self.stdout.write(self.style.SUCCESS(f"Succès avec {enc} ! {count} districts importés."))
+            
+            

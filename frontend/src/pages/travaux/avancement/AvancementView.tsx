@@ -45,8 +45,10 @@ function marcheToRow(m: MarcheItem): PpmRow {
 type AvancementViewProps = {
   /** Ouvre le formulaire de création d'un marché. Le bouton vit dans l'en-tête du panneau Recherche. */
   onNewMarche?: () => void
+  canCreateMarche?: boolean
+  canManageProgress?: boolean
 }
-export default function AvancementView({ onNewMarche }: AvancementViewProps) {
+export default function AvancementView({ onNewMarche, canCreateMarche = true, canManageProgress = true }: AvancementViewProps) {
   const [stats, setStats] = useState<DashboardStatsResponse | null>(null)
   const [marches, setMarches] = useState<MarcheItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,14 +77,23 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [statsData, marchesData] = await Promise.all([
-        fetchDashboardStats(),
-        fetchMarches(),
-      ])
-      setStats(statsData)
-      setMarches(marchesData ?? [])
-    } catch {
-      alert('Erreur lors du chargement des données. Veuillez réessayer.')
+      const results = await Promise.allSettled([fetchDashboardStats(), fetchMarches()])
+
+      const statsRes = results[0]
+      const marchesRes = results[1]
+
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value)
+      }
+
+      if (marchesRes.status === 'fulfilled') {
+        setMarches(marchesRes.value ?? [])
+      }
+
+      // Show alert only if both calls failed
+      if (statsRes.status === 'rejected' && marchesRes.status === 'rejected') {
+        alert('Erreur lors du chargement des données. Veuillez réessayer.')
+      }
     } finally {
       setLoading(false)
     }
@@ -97,10 +108,14 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
     const handler = () => loadData()
     if (typeof window !== 'undefined') {
       window.addEventListener('marche:created', handler)
+      window.addEventListener('avancement:deleted', handler)
+      window.addEventListener('avancement:created', handler)
     }
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('marche:created', handler)
+        window.removeEventListener('avancement:deleted', handler)
+        window.removeEventListener('avancement:created', handler)
       }
     }
   }, [loadData])
@@ -259,11 +274,13 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
       await deleteMarche(row.id)
       setMarches((prev) => prev.filter((m) => String(m.id) !== row.id))
       await loadData()
+      window.dispatchEvent(new CustomEvent('marche:deleted'))
       window.dispatchEvent(new CustomEvent('marche:created'))
     } catch (error: any) {
       if (error?.status === 404) {
         setMarches((prev) => prev.filter((m) => String(m.id) !== row.id))
         await loadData()
+        window.dispatchEvent(new CustomEvent('marche:deleted'))
         window.dispatchEvent(new CustomEvent('marche:created'))
         return
       }
@@ -326,6 +343,7 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
       <div className="avancement-summary-grid">
       {summaryCards.map(({ label, value, hint, tone, icon: Icon, kind }) => {
           const isAction = kind === 'action'
+          if (isAction && !canCreateMarche) return null
           return (
             <article key={label} className={`summary-card summary-card--${tone} ${isAction ? 'summary-card--action' : ''}`}>
               {isAction ? (
@@ -362,20 +380,22 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
         <div className="panel-header">
           <h2>Recherche</h2>
           <div className="avancement-search-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {onNewMarche && (
+            {canCreateMarche && onNewMarche && (
               <button type="button" className="btn btn-primary btn-sm avancement-search-new" onClick={onNewMarche}>
                 Nouveau marché
               </button>
             )}
-            <button
-              type="button"
-              className={`mode-toggle ${isEditMode ? 'is-edit' : ''}`}
-              onClick={() => setIsEditMode((prev) => !prev)}
-              title={isEditMode ? 'Mode Vue' : 'Mode Édition'}
-              aria-label={isEditMode ? 'Mode Vue' : 'Mode Édition'}
-            >
-              {isEditMode ? <Eye size={16} weight="fill" /> : <PencilSimple size={16} weight="fill" />}
-            </button>
+            {canManageProgress && (
+              <button
+                type="button"
+                className={`mode-toggle ${isEditMode ? 'is-edit' : ''}`}
+                onClick={() => setIsEditMode((prev) => !prev)}
+                title={isEditMode ? 'Mode Vue' : 'Mode Édition'}
+                aria-label={isEditMode ? 'Mode Vue' : 'Mode Édition'}
+              >
+                {isEditMode ? <Eye size={16} weight="fill" /> : <PencilSimple size={16} weight="fill" />}
+              </button>
+            )}
           </div>
         </div>
 
@@ -569,7 +589,7 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
                           <th rowSpan={2}>Financement</th>
                           <th colSpan={3} className="text-center">Avancement</th>
                           <th rowSpan={2}>Situation</th>
-                          {isEditMode && (
+                          {isEditMode && canManageProgress && (
                             <th rowSpan={2} className="text-center" style={{ width: 56 }}>Action</th>
                           )}
                         </tr>
@@ -577,7 +597,7 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
                           <th className="text-center small">Temporel</th>
                           <th className="text-center small">Physique</th>
                           <th className="text-center small">Financier</th>
-                          {isEditMode && <th />}
+                          {isEditMode && canManageProgress && <th />}
                         </tr>
                       </thead>
                       <tbody>
@@ -595,11 +615,12 @@ export default function AvancementView({ onNewMarche }: AvancementViewProps) {
                             <td style={{ textAlign: 'center' }}>{row.physique}</td>
                             <td style={{ textAlign: 'center' }}>{row.financier}</td>
                             <td>{row.situation}</td>
-                            {isEditMode && (
+                            {isEditMode && canManageProgress && (
                               <td className="text-center">
                                 <RowActions
                                   row={row}
-                                  canDelete
+                                  canDelete={canManageProgress}
+                                  mode={canCreateMarche ? 'full' : 'avancement-only'}
                                   onOpen={openModal}
                                   onDelete={handleDelete}
                                 />

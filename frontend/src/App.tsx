@@ -13,6 +13,7 @@ import {
 import './App.css'
 import { API_BASE_URL } from './api/client'
 import { logout } from './api/auth.api'
+import { fetchCurrentUser } from './api/users.api'
 
 export type { AppPage } from './routes/hashRoute'
 
@@ -21,10 +22,22 @@ const AUTH_STORAGE_KEY = 'app-auth-state'
 /** `checking` tant que la session n'a pas été validée : on ne sait pas encore quoi afficher. */
 type Session = 'checking' | 'authenticated' | 'anonymous'
 
+type AppUser = {
+  id: number
+  username: string
+  email?: string
+  first_name?: string
+  last_name?: string
+  is_superuser: boolean
+  is_project_manager?: boolean
+  roles: string[]
+}
+
 function App() {
   // La page courante vient de l'URL : un rafraîchissement ne la perd plus.
   const [route, setRoute] = useState<Route>(readRoute)
   const [session, setSession] = useState<Session>('checking')
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null)
 
   // Page visée avant la redirection vers la connexion, pour y revenir après login.
   const pendingRoute = useRef<Route | null>(null)
@@ -63,7 +76,7 @@ function App() {
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/intervenants/`, {
+        const res = await fetch(`${API_BASE_URL}/auth/me/`, {
           method: 'GET',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -71,13 +84,23 @@ function App() {
 
         if (!mounted) return
 
-        const nextSession: Session = res.ok ? 'authenticated' : 'anonymous'
-        window.localStorage.setItem(AUTH_STORAGE_KEY, nextSession)
-        setSession(nextSession)
+        if (res.ok) {
+          const data = await res.json() as { user?: AppUser; can_manage_users?: boolean }
+          const user = data.user ?? null
+          setCurrentUser(user ?? null)
+          window.localStorage.setItem(AUTH_STORAGE_KEY, 'authenticated')
+          setSession('authenticated')
+          return
+        }
+
+        window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
+        setCurrentUser(null)
+        setSession('anonymous')
       } catch {
         // Réseau injoignable : on traite comme une session absente.
         if (mounted) {
           window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
+          setCurrentUser(null)
           setSession('anonymous')
         }
       }
@@ -122,23 +145,46 @@ function App() {
 
     document.cookie = 'access=; Max-Age=0; path=/; SameSite=Lax'
     window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
+    setCurrentUser(null)
     setSession('anonymous')
     navigate({ page: LOGIN_PAGE, tab: null })
   }, [navigate])
+
+  useEffect(() => {
+    if (!currentUser) return
+
+    const isProjectManager = currentUser.roles.includes('chef_de_projet')
+    if (isProjectManager && !['dashboard', 'travaux', 'cartographie'].includes(route.page)) {
+      navigate({ page: 'dashboard', tab: null })
+    }
+  }, [currentUser, route.page, navigate])
 
   // while checking authentication, render nothing to avoid flashing login
   if (session === 'checking') return null
 
   if (session === 'anonymous' || route.page === LOGIN_PAGE) {
-    return <Login onLogin={() => {
+    return <Login onLogin={async () => {
       window.localStorage.setItem(AUTH_STORAGE_KEY, 'authenticated')
+      try {
+        const data = await fetchCurrentUser()
+        setCurrentUser(data.user ?? null)
+      } catch {
+        setCurrentUser(null)
+      }
       setSession('authenticated')
     }} />
   }
 
   return (
-    <Layout activePage={route.page} onPageChange={handlePageChange} onLogout={handleLogout}>
-      <AppRoutes route={route} onNavigate={navigate} />
+    <Layout
+      activePage={route.page}
+      onPageChange={handlePageChange}
+      onLogout={handleLogout}
+      canManageUsers={Boolean(currentUser?.is_superuser || currentUser?.roles.includes('admin'))}
+      userRoles={currentUser?.roles ?? []}
+      userDisplayName={currentUser ? [currentUser.first_name, currentUser.last_name].filter(Boolean).join(' ') || currentUser.username : 'Utilisateur'}
+    >
+      <AppRoutes route={route} onNavigate={navigate} userRoles={currentUser?.roles ?? []} />
     </Layout>
   )
 }

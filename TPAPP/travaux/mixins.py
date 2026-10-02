@@ -5,6 +5,119 @@ from django.core.exceptions import PermissionDenied
 from .models import Marche, Avancement, OS
 
 
+ROLE_ALIASES = {
+    'admin': {'admin', 'superadmin', 'administrateur', 'administrateur_systeme'},
+    'chef_de_projet': {'chef_de_projet', 'chef_projet', 'project_manager'},
+    'drtp': {'drtp', 'gestionnaire_de_reference', 'gestionnaire_reference'},
+    'visiteur': {'visiteur', 'ministre', 'viewer', 'visiteur_ministre', 'visiteur_sg', 'visiteur_dgtp', 'audience_ministre', 'audience_op'},
+}
+
+
+def get_user_group_names(user):
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return set()
+
+    raw_names = {
+        str(name).strip().lower().replace(' ', '_')
+        for name in user.groups.values_list('name', flat=True)
+    }
+
+    canonical_names = set()
+    for canonical_name, aliases in ROLE_ALIASES.items():
+        if raw_names & aliases:
+            canonical_names.add(canonical_name)
+
+    canonical_names.update(raw_names)
+    return canonical_names
+
+
+def is_admin_like_user(user):
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+
+    group_names = get_user_group_names(user)
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        return True
+
+    return 'admin' in group_names
+
+
+def is_project_manager_user(user):
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if is_admin_like_user(user):
+        return False
+
+    return 'chef_de_projet' in get_user_group_names(user)
+
+
+def is_drtp_user(user):
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if is_admin_like_user(user):
+        return True
+    return 'drtp' in get_user_group_names(user)
+
+
+def is_visitor_user(user):
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if is_admin_like_user(user):
+        return True
+    return 'visiteur' in get_user_group_names(user)
+
+
+def user_can_access_axe(user, axe):
+    if is_admin_like_user(user) or is_visitor_user(user):
+        return True
+    if axe is None:
+        return False
+    return getattr(axe, 'attache_suivi_id', None) == getattr(user, 'pk', None)
+
+
+def filter_queryset_for_user(user, queryset):
+    if queryset is None:
+        return queryset
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return queryset.none()
+    if is_admin_like_user(user) or is_visitor_user(user):
+        return queryset
+
+    model_name = queryset.model.__name__
+
+    if is_project_manager_user(user):
+        if model_name == 'Axe':
+            return queryset.filter(attache_suivi=user)
+        if model_name == 'Marche':
+            return queryset.filter(axe__attache_suivi=user)
+        if model_name == 'PKMarche':
+            return queryset.filter(marche__axe__attache_suivi=user)
+        if model_name == 'Avancement':
+            return queryset.filter(marche__axe__attache_suivi=user)
+        if model_name == 'OS':
+            return queryset.filter(marche__axe__attache_suivi=user)
+
+    if model_name == 'Axe':
+        return queryset.filter(attache_suivi=user)
+    if model_name == 'Marche':
+        return queryset.filter(axe__attache_suivi=user)
+    if model_name == 'PKMarche':
+        return queryset.filter(marche__axe__attache_suivi=user)
+    if model_name == 'Avancement':
+        return queryset.filter(marche__axe__attache_suivi=user)
+    if model_name == 'OS':
+        return queryset.filter(marche__axe__attache_suivi=user)
+    return queryset
+
+
+def user_can_access_marche(user, marche):
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if marche is None:
+        return False
+    return user_can_access_axe(user, getattr(marche, 'axe', None))
+
+
 class ChefMarcheRequiredMixin(UserPassesTestMixin):
     def test_func(self):
         user = self.request.user
@@ -62,45 +175,24 @@ class SuiviPermissionMixin:
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-
-        if user.is_superuser:
-            return qs
-
-        model = qs.model
-
-        # 🔹 Cas 1 : Marche
-        if model.__name__ == "Marche":
-            return qs.filter(axe__attache_suivi=user)
-
-        # 🔹 Cas 2 : Avancement
-        if model.__name__ == "Avancement":
-            return qs.filter(marche__axe__attache_suivi=user)
-
-        # 🔹 Cas 3 : Axe
-        if model.__name__ == "Axe":
-            return qs.filter(attache_suivi=user)
-
-        return qs
+        return filter_queryset_for_user(user, qs)
 
     def dispatch(self, request, *args, **kwargs):
-        if request.user.is_superuser:
+        if is_admin_like_user(request.user):
             return super().dispatch(request, *args, **kwargs)
 
         obj = self.get_object()
 
-        # Marche
         if hasattr(obj, "axe"):
-            if obj.axe.attache_suivi != request.user:
+            if not user_can_access_axe(request.user, obj.axe):
                 raise PermissionDenied("Accès refusé.")
 
-        # Avancement
         if hasattr(obj, "marche"):
-            if obj.marche.axe.attache_suivi != request.user:
+            if not user_can_access_marche(request.user, obj.marche):
                 raise PermissionDenied("Accès refusé.")
 
-        # Axe
         if hasattr(obj, "attache_suivi"):
-            if obj.attache_suivi != request.user:
+            if not user_can_access_axe(request.user, obj):
                 raise PermissionDenied("Accès refusé.")
 
         return super().dispatch(request, *args, **kwargs)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Building, MapPin, Ruler, SpinnerGap, User } from '@phosphor-icons/react'
 import { deleteAvancement, fetchMarche } from '../../../api/travaux.api'
+import { fetchCurrentUser } from '../../../api/users.api'
 import { buildHash } from '../../../routes/hashRoute'
 import type { AvancementItem, OSItem } from '../../../types/travaux'
 import type { MarcheItem } from '../../../types/travaux'
@@ -71,6 +72,7 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
   const [numMarche, setNumMarche] = useState<string | null>(null)
   const [descriptionText, setDescriptionText] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [canMutate, setCanMutate] = useState(true)
   const [editingAv, setEditingAv] = useState<AvancementItem | null>(null)
   // Relevé vers lequel l'onglet Rapport doit défiler, quand on vient de
   // l'historique de l'onglet Détail.
@@ -97,6 +99,14 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
   }
 
   useEffect(() => {
+    void fetchCurrentUser()
+      .then((response) => {
+        const roles = response.user.roles ?? []
+        const isReadOnlyViewer = roles.some((role) => ['visiteur', 'ministre', 'viewer', 'audience_ministre'].includes(role))
+        setCanMutate(!isReadOnlyViewer)
+      })
+      .catch(() => setCanMutate(true))
+
     loadMarche()
 
     // Listen for advancement events to refresh data
@@ -230,11 +240,13 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                             </span>
                           </div>
                         )}
-                        <MarcheActions
-                          ariaLabel={`Actions marché ${market.id}`}
-                          onEdit={() => { window.alert('Modifier marché — à implémenter') }}
-                          onDelete={() => { if (window.confirm('Supprimer ce marché ?')) { window.alert('Suppression déclenchée — implémenter') } }}
-                        />
+                        {canMutate && (
+                          <MarcheActions
+                            ariaLabel={`Actions marché ${market.id}`}
+                            onEdit={() => { window.alert('Modifier marché — à implémenter') }}
+                            onDelete={() => { if (window.confirm('Supprimer ce marché ?')) { window.alert('Suppression déclenchée — implémenter') } }}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -469,23 +481,25 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                                 {Number(av.avancement_financier).toFixed(1)}%
                               </td>
                               <td className="text-center" onClick={(event) => event.stopPropagation()}>
-                                <AvancementRowActions
-                                  av={av}
-                                  onEdit={(a) => setEditingAv(a)}
-                                  onDelete={async (a) => {
-                                    if (!a.id) return
-                                    if (!window.confirm('Supprimer ce relevé d\'avancement ?')) return
-                                    try {
-                                      await deleteAvancement(a.id)
-                                      if (typeof window !== 'undefined') {
-                                        window.dispatchEvent(new CustomEvent('avancement:deleted'))
+                                {canMutate && (
+                                  <AvancementRowActions
+                                    av={av}
+                                    onEdit={(a) => setEditingAv(a)}
+                                    onDelete={async (a) => {
+                                      if (!a.id) return
+                                      if (!window.confirm('Supprimer ce relevé d\'avancement ?')) return
+                                      try {
+                                        await deleteAvancement(a.id)
+                                        if (typeof window !== 'undefined') {
+                                          window.dispatchEvent(new CustomEvent('avancement:deleted'))
+                                        }
+                                        await loadMarche()
+                                      } catch {
+                                        alert('Impossible de supprimer le relevé.')
                                       }
-                                      await loadMarche()
-                                    } catch {
-                                      alert('Impossible de supprimer le relevé.')
-                                    }
-                                  }}
-                                />
+                                    }}
+                                  />
+                                )}
                               </td>
                             </tr>
                           ))}

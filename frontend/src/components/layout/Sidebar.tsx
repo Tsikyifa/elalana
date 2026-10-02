@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react'
 import type { AppPage } from '../../App'
-import { AnchorSimple, BookOpen, Briefcase, ChartBar, House } from '@phosphor-icons/react'
+import { AnchorSimple, BookOpen, Briefcase, ChartBar, House, MapTrifold, UsersThree } from '@phosphor-icons/react'
 import { PanelLeft } from 'lucide-react'
 import { MOBILE_QUERY, useMediaQuery } from '../../hooks/useMediaQuery'
 import { ProfileMenu } from './ProfileMenu'
 
-const items: Array<{ key: AppPage; label: string; icon: typeof House }> = [
+const itemsBase: Array<{ key: AppPage; label: string; icon: typeof House }> = [
   { key: 'dashboard', label: 'Tableau de bord', icon: House },
   { key: 'travaux', label: 'Avancement', icon: Briefcase },
+  { key: 'cartographie', label: 'Cartographie', icon: MapTrifold },
   { key: 'bac', label: 'Bac', icon: AnchorSimple },
   { key: 'cp', label: 'Convention Programme', icon: ChartBar },
   { key: 'annuaire', label: 'Annuaire', icon: BookOpen },
 ]
+
+const userItem: { key: AppPage; label: string; icon: typeof House } = {
+  key: 'users',
+  label: 'Utilisateurs',
+  icon: UsersThree,
+}
 
 const shortcuts: Array<{ key: AppPage; label: string }> = [
   { key: 'travaux', label: 'Suivi' },
@@ -24,13 +31,53 @@ type SidebarProps = {
   onPageChange: (page: AppPage) => void
   mobileOpen?: boolean
   onCloseMobile?: () => void
+  canManageUsers?: boolean
+  userRoles?: string[]
+  userDisplayName?: string
 }
 
-export function Sidebar({ activePage, onPageChange, mobileOpen, onCloseMobile }: SidebarProps) {
+function getVisibleMenuItems(userRoles: string[] = [], canManageUsers: boolean) {
+  const isProjectManager = userRoles.includes('chef_de_projet')
+
+  if (isProjectManager) {
+    return [
+      { key: 'dashboard', label: 'Tableau de bord', icon: House },
+      { key: 'travaux', label: 'Avancement', icon: Briefcase },
+      { key: 'cartographie', label: 'Cartographie', icon: MapTrifold },
+    ] as Array<{ key: AppPage; label: string; icon: typeof House }>
+  }
+
+  const baseItems = canManageUsers ? [...itemsBase, userItem] : itemsBase
+  return baseItems
+}
+
+function getRoleLabel(userRoles: string[] = []) {
+  const rolePriority = ['admin', 'chef_de_projet', 'drtp', 'visiteur']
+  const roleMap: Record<string, string> = {
+    admin: 'Admin',
+    chef_de_projet: 'Chef de projet',
+    drtp: 'DRTP',
+    visiteur: 'Visiteur',
+  }
+
+  const matchingRole = rolePriority.find((role) => userRoles.includes(role))
+  return matchingRole ? roleMap[matchingRole] : 'Utilisateur'
+}
+
+export function Sidebar({ activePage, onPageChange, mobileOpen, onCloseMobile, canManageUsers = false, userRoles = [], userDisplayName }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const isMobile = useMediaQuery(MOBILE_QUERY)
   const isMobileOpen = Boolean(mobileOpen)
   const [brandHovered, setBrandHovered] = useState(false)
+  const items = getVisibleMenuItems(userRoles, canManageUsers)
+  const profileRoleLabel = getRoleLabel(userRoles)
+  const profileName = userDisplayName?.trim() || 'Utilisateur'
+  const profileInitials = profileName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || 'U'
 
   // Le repli desktop n'a pas de sens dans un tiroir : on l'ignore sur mobile.
   const isCollapsed = collapsed && !isMobile
@@ -137,11 +184,11 @@ export function Sidebar({ activePage, onPageChange, mobileOpen, onCloseMobile }:
 
       {/* Reste monté même replié : le menu de thème doit rester atteignable. */}
       <div className="sidebar__profile">
-        <div className="sidebar__avatar">A</div>
+        <div className="sidebar__avatar" aria-label={`Profil de ${profileName}`}>{profileInitials}</div>
         {!isCollapsed && (
           <div>
-            <div className="sidebar__profile-name">Admin</div>
-            <small className="sidebar__profile-role">Profil</small>
+            <small className="sidebar__profile-role">{profileRoleLabel}</small>
+            <div className="sidebar__profile-name">{profileName}</div>
           </div>
         )}
         <ProfileMenu />

@@ -8,6 +8,7 @@ import {
   Stack,
 } from '@phosphor-icons/react'
 import { createMarche, fetchAxes } from '../../../api/travaux.api'
+import { fetchCurrentUser, fetchUserManagement } from '../../../api/users.api'
 import { ApiError } from '../../../api/client'
 import type { AxeOption } from '../../../types/travaux'
 
@@ -67,6 +68,9 @@ export default function MarcheForm({
   const [glissements, setGlissements] = useState<Glissement[]>([])
 
   const [axesList, setAxesList] = useState<AxeOption[]>([])
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: number; username: string; first_name?: string; last_name?: string }>>([])
+  const [selectedProjectManager, setSelectedProjectManager] = useState('')
+  const [isAdminUser, setIsAdminUser] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -80,6 +84,27 @@ export default function MarcheForm({
       })
       .catch(() => {})
   }, [axe])
+
+  useEffect(() => {
+    void Promise.all([fetchCurrentUser(), fetchUserManagement()])
+      .then(([currentUser, usersResponse]) => {
+        const adminRole = currentUser.user.is_superuser || currentUser.user.roles.includes('admin')
+        setIsAdminUser(adminRole)
+
+        const managers = usersResponse.users
+          .filter((user) => user.roles.includes('chef_de_projet'))
+          .sort((a, b) => a.username.localeCompare(b.username))
+
+        setProjectManagers(managers)
+        if (adminRole && managers.length > 0 && !selectedProjectManager) {
+          setSelectedProjectManager(String(managers[0].id))
+        }
+      })
+      .catch(() => {
+        setProjectManagers([])
+        setIsAdminUser(false)
+      })
+  }, [selectedProjectManager])
 
   function addSegment() {
     setSegments((s) => [
@@ -175,6 +200,10 @@ export default function MarcheForm({
         delai_jours: delaiJours ? Number(delaiJours) : 0,
       }
 
+      if (isAdminUser && selectedProjectManager) {
+        payload.chef_de_projet = Number(selectedProjectManager)
+      }
+
       if (payloadSegments.length > 0) payload.segments_pk = payloadSegments
 
       console.debug('Creating marche payload', payload)
@@ -265,6 +294,29 @@ export default function MarcheForm({
                   </select>
                 </div>
               </div>
+
+              {isAdminUser && (
+                <div className="col-md-4">
+                  <label className="form-label fw-bold small">CHEF DE PROJET À AFFECTER</label>
+                  <div className="input-group marche-input-group">
+                    <span className="input-group-text">
+                      <Stack size={16} weight="bold" aria-hidden="true" />
+                    </span>
+                    <select
+                      className="filter-select"
+                      value={selectedProjectManager}
+                      onChange={(e) => setSelectedProjectManager(e.target.value)}
+                    >
+                      <option value="">-- Choisir un chef de projet --</option>
+                      {projectManagers.map((manager) => (
+                        <option key={manager.id} value={String(manager.id)}>
+                          {manager.first_name || manager.username} {manager.last_name || ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               <div className="col-md-4">
                 {/* Région : supprimée — déterminée automatiquement par l'axe et les PK */}

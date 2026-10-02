@@ -10,9 +10,12 @@ type LayoutProps = {
   activePage: AppPage
   onPageChange: (page: AppPage) => void
   onLogout?: () => void
+  canManageUsers?: boolean
+  userRoles?: string[]
+  userDisplayName?: string
 }
 
-export function Layout({ children, activePage, onPageChange, onLogout }: LayoutProps) {
+export function Layout({ children, activePage, onPageChange, onLogout, canManageUsers = false, userRoles = [], userDisplayName }: LayoutProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const isMobile = useMediaQuery(MOBILE_QUERY)
 
@@ -41,6 +44,9 @@ export function Layout({ children, activePage, onPageChange, onLogout }: LayoutP
         onPageChange={onPageChange}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
+        canManageUsers={canManageUsers}
+        userRoles={userRoles}
+        userDisplayName={userDisplayName}
       />
       <div className="layout-content">
         <Header

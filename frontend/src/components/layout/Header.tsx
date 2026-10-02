@@ -4,9 +4,11 @@ import { Bell, SignOut, List } from '@phosphor-icons/react'
 const pageTitles: Record<AppPage, string> = {
   dashboard: 'Tableau de bord',
   travaux: 'Gestion des marchés',
+  cartographie: 'Cartographie du Réseau Routier & Chantiers',
   annuaire: 'Annuaire téléphonique',
   bac: 'Bacs de traversée',
   cp: 'Conventions programme',
+  users: 'Gestion des utilisateurs',
 }
 
 type HeaderProps = {

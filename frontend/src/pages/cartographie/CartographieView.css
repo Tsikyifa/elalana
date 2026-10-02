@@ -1,0 +1,1252 @@
+/* ==========================================================================
+   MODULE CARTOGRAPHIE & SIG — THÈME SOMBRE DU PROJET (SOBRE & MINIMALISTE)
+   ========================================================================== */
+
+.cartographie-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  min-height: 700px;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  box-sizing: border-box;
+  background: var(--bg, #0f141b);
+  color: var(--text, #e8edf4);
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   1. En-tête de page
+   -------------------------------------------------------------------------- */
+.carto-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.carto-header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.carto-title-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted, #9aa7b8);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.carto-header-title h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-strong, #f8fafc);
+  letter-spacing: -0.02em;
+}
+
+.carto-header-title p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted, #9aa7b8);
+}
+
+.carto-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.carto-btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--border, #2b3543);
+  background: var(--panel, #191f29);
+  color: var(--text, #e8edf4);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.carto-btn-action:hover {
+  background: var(--hover, #232b38);
+  border-color: var(--border-strong, #3a4658);
+}
+
+.carto-btn-action.loading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* --------------------------------------------------------------------------
+   2. Grille de KPIs (Sobre & Monochrome)
+   -------------------------------------------------------------------------- */
+.carto-kpis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.65rem;
+}
+
+.carto-kpi-card {
+  background: var(--panel, #191f29);
+  border: 1px solid var(--border, #2b3543);
+  border-radius: 10px;
+  padding: 0.6rem 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: border-color 0.15s ease;
+}
+
+.carto-kpi-card:hover {
+  border-color: var(--border-strong, #3a4658);
+}
+
+.carto-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--surface, #1f2632);
+  color: var(--text-2, #dbe3ec);
+  border: 1px solid var(--border, #2b3543);
+}
+
+.carto-kpi-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.carto-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted, #9aa7b8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.carto-kpi-number {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--text-strong, #f8fafc);
+  line-height: 1.25;
+}
+
+.carto-kpi-unit {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted, #9aa7b8);
+}
+
+.carto-kpi-sub {
+  font-size: 0.7rem;
+  color: var(--muted-soft, #6b7a8d);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.carto-kpi-progress {
+  width: 100%;
+  height: 3px;
+  background: var(--border, #2b3543);
+  border-radius: 2px;
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.carto-kpi-progress-bar {
+  height: 100%;
+  background: #10b981;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* --------------------------------------------------------------------------
+   3. Barre de Contrôles & Filtres Dynamiques
+   -------------------------------------------------------------------------- */
+.carto-toolbar {
+  background: var(--panel, #191f29);
+  border: 1px solid var(--border, #2b3543);
+  border-radius: 10px;
+  padding: 0.55rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Ligne 1 : Filtre d'état des travaux */
+.carto-filter-status-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.carto-filter-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted, #9aa7b8);
+  white-space: nowrap;
+}
+
+.carto-status-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.carto-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 16px;
+  border: 1px solid var(--border, #2b3543);
+  background: var(--surface, #1f2632);
+  color: var(--text-2, #dbe3ec);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.carto-status-pill:hover {
+  background: var(--hover, #232b38);
+  border-color: var(--border-strong, #3a4658);
+}
+
+.carto-status-pill.active {
+  background: var(--primary, #3a4658);
+  color: var(--on-primary, #f8fafc);
+  border-color: #64748b;
+}
+
+.carto-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.dot-en-cours { background: #38bdf8; }
+.dot-retard { background: #ef4444; }
+.dot-acheve { background: #10b981; }
+.dot-arrete { background: #f59e0b; }
+.dot-aucun { background: #64748b; }
+
+.carto-pill-count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted, #9aa7b8);
+}
+
+.carto-status-pill.active .carto-pill-count {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Ligne 2 : Options de sélection et fonds de carte */
+.carto-options-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border, #2b3543);
+}
+
+.carto-options-left,
+.carto-options-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.carto-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.carto-select-wrap label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted, #9aa7b8);
+}
+
+.carto-select {
+  padding: 0.3rem 0.65rem;
+  font-size: 0.78rem;
+  border: 1px solid var(--border, #2b3543);
+  border-radius: 6px;
+  background: var(--surface, #1f2632);
+  color: var(--text, #e8edf4);
+  cursor: pointer;
+  outline: none;
+}
+
+.carto-select:focus {
+  border-color: var(--border-strong, #3a4658);
+}
+
+.carto-seg-control {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface, #1f2632);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #2b3543);
+  gap: 2px;
+}
+
+.carto-seg-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-soft, #6b7a8d);
+  padding: 0 0.3rem;
+}
+
+.carto-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.5rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--muted, #9aa7b8);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.carto-seg-btn.active {
+  background: var(--panel, #191f29);
+  color: var(--text-strong, #f8fafc);
+  border: 1px solid var(--border-strong, #3a4658);
+}
+
+.carto-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border, #2b3543);
+  background: var(--surface, #1f2632);
+  color: var(--text-2, #dbe3ec);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.carto-toggle-btn.active {
+  background: var(--panel-muted, #232b38);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.carto-basemap-group {
+  display: inline-flex;
+  background: var(--surface, #1f2632);
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #2b3543);
+  gap: 2px;
+}
+
+.carto-basemap-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.22rem 0.5rem;
+  font-size: 0.73rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--muted, #9aa7b8);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.carto-basemap-btn.active {
+  background: var(--panel, #191f29);
+  color: var(--text-strong, #f8fafc);
+  border: 1px solid var(--border-strong, #3a4658);
+}
+
+/* --------------------------------------------------------------------------
+   4. Zone Carte & Leaflet Thème Sombre
+   -------------------------------------------------------------------------- */
+.carto-map-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 440px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border, #2b3543);
+  background: #0f141b;
+}
+
+.carto-leaflet-canvas {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  background: #0f141b;
+}
+
+/* Style des contrôles de zoom Leaflet en mode sombre */
+.leaflet-bar {
+  border: 1px solid var(--border, #2b3543) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  background-color: var(--panel, #191f29) !important;
+  color: var(--text, #e8edf4) !important;
+  border-bottom: 1px solid var(--border, #2b3543) !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: var(--hover, #232b38) !important;
+  color: var(--text-strong, #f8fafc) !important;
+}
+
+/* Attributions Leaflet discrètes */
+.leaflet-control-attribution {
+  background: rgba(15, 20, 27, 0.8) !important;
+  color: #64748b !important;
+  font-size: 0.65rem !important;
+}
+
+.leaflet-control-attribution a {
+  color: #94a3b8 !important;
+}
+
+/* Légende flottante sombre */
+.carto-floating-legend {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  background: rgba(25, 31, 41, 0.94);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border, #2b3543);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  z-index: 900;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  font-size: 0.73rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 230px;
+}
+
+.carto-legend-title {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: var(--text-strong, #f8fafc);
+  margin-bottom: 2px;
+}
+
+.carto-legend-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.carto-legend-clickable {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0.35rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.carto-legend-clickable:hover {
+  background: var(--surface, #1f2632);
+}
+
+.carto-legend-clickable.selected {
+  background: var(--panel-muted, #232b38);
+  font-weight: 700;
+}
+
+.carto-legend-line {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.carto-legend-text {
+  flex: 1;
+  color: var(--text, #e8edf4);
+  white-space: nowrap;
+}
+
+.carto-legend-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted, #9aa7b8);
+  background: var(--surface, #1f2632);
+  padding: 0 4px;
+  border-radius: 6px;
+}
+
+.carto-legend-bacs-note {
+  display: flex;
+  align-items: center;
+  font-size: 0.68rem;
+  color: var(--muted, #9aa7b8);
+  margin-top: 0.2rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border, #2b3543);
+}
+
+/* --------------------------------------------------------------------------
+   5. Popups & Tooltips Leaflet Sombre
+   -------------------------------------------------------------------------- */
+.carto-bac-marker {
+  background: transparent;
+  border: none;
+}
+
+.carto-bac-pin {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.carto-bac-pin:hover {
+  transform: scale(1.15);
+}
+
+.carto-bac-pin.operationnel { background: #0284c7; }
+.carto-bac-pin.hors-usage { background: #ef4444; }
+
+.leaflet-popup-content-wrapper {
+  background: var(--panel, #191f29) !important;
+  color: var(--text, #e8edf4) !important;
+  border: 1px solid var(--border, #2b3543) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-popup-tip {
+  background: var(--panel, #191f29) !important;
+}
+
+.carto-bac-popup {
+  font-size: 0.78rem;
+  min-width: 180px;
+}
+
+.carto-bac-popup-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border, #2b3543);
+  padding-bottom: 0.25rem;
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-bac-status-badge {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+
+.badge-success { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+.badge-danger { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+.carto-bac-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  color: var(--muted, #9aa7b8);
+}
+
+/* Tooltip Route */
+.leaflet-tooltip {
+  background: rgba(25, 31, 41, 0.95) !important;
+  color: var(--text, #e8edf4) !important;
+  border: 1px solid var(--border, #2b3543) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4) !important;
+  padding: 6px 10px !important;
+}
+
+.leaflet-tooltip-top:before { border-top-color: var(--border, #2b3543) !important; }
+.leaflet-tooltip-bottom:before { border-bottom-color: var(--border, #2b3543) !important; }
+.leaflet-tooltip-left:before { border-left-color: var(--border, #2b3543) !important; }
+.leaflet-tooltip-right:before { border-right-color: var(--border, #2b3543) !important; }
+
+.carto-tooltip-wrap {
+  font-size: 0.78rem;
+  min-width: 180px;
+}
+
+.carto-tooltip-header {
+  font-size: 0.82rem;
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-tooltip-sub {
+  font-size: 0.7rem;
+  color: var(--muted, #9aa7b8);
+  margin-bottom: 0.25rem;
+}
+
+.carto-tooltip-status {
+  margin: 0.25rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.carto-tooltip-progress {
+  font-size: 0.7rem;
+  color: var(--text-2, #dbe3ec);
+  margin-top: 0.2rem;
+}
+
+.carto-tooltip-hint {
+  font-size: 0.65rem;
+  color: var(--muted-soft, #6b7a8d);
+  margin-top: 0.25rem;
+}
+
+/* --------------------------------------------------------------------------
+   6. Tiroir Coulissant d'Inspection Sombre (Side Drawer)
+   -------------------------------------------------------------------------- */
+.carto-side-drawer {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  bottom: 0.85rem;
+  width: 390px;
+  max-width: calc(100% - 1.7rem);
+  background: var(--panel, #191f29);
+  border: 1px solid var(--border, #2b3543);
+  border-radius: 10px;
+  box-shadow: -4px 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideDrawer 0.2s ease-out;
+}
+
+@keyframes slideDrawer {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.carto-drawer-header {
+  padding: 0.85rem 1rem;
+  background: var(--surface, #1f2632);
+  border-bottom: 1px solid var(--border, #2b3543);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.carto-drawer-axe-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--text-strong, #f8fafc);
+  background: var(--panel-muted, #232b38);
+  border: 1px solid var(--border, #2b3543);
+  padding: 2px 7px;
+  border-radius: 10px;
+  margin-bottom: 0.2rem;
+}
+
+.carto-drawer-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-drawer-desc {
+  margin: 0.15rem 0 0 0;
+  font-size: 0.75rem;
+  color: var(--muted, #9aa7b8);
+  line-height: 1.35;
+}
+
+.carto-drawer-close-btn {
+  background: var(--panel, #191f29);
+  border: 1px solid var(--border, #2b3543);
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted, #9aa7b8);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.carto-drawer-close-btn:hover {
+  background: var(--hover, #232b38);
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-drawer-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  background: var(--panel, #191f29);
+  border-bottom: 1px solid var(--border, #2b3543);
+}
+
+.carto-drawer-kpi-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.kpi-small-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--muted-soft, #6b7a8d);
+  text-transform: uppercase;
+}
+
+.kpi-small-val {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-drawer-tabs {
+  display: flex;
+  padding: 0.4rem 1rem 0 1rem;
+  gap: 0.35rem;
+  border-bottom: 1px solid var(--border, #2b3543);
+  background: var(--panel, #191f29);
+  overflow-x: auto;
+}
+
+.carto-drawer-tab {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--muted, #9aa7b8);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.carto-drawer-tab:hover {
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-drawer-tab.active {
+  color: #38bdf8;
+  border-bottom-color: #38bdf8;
+  font-weight: 700;
+}
+
+.carto-drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.carto-drawer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--muted, #9aa7b8);
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+/* Cartes des marchés dans le tiroir */
+.carto-marche-card {
+  background: var(--surface, #1f2632);
+  border: 1px solid var(--border, #2b3543);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.carto-marche-card:hover {
+  border-color: var(--border-strong, #3a4658);
+  background: var(--hover, #232b38);
+}
+
+.carto-marche-card.is-selected {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px #38bdf8, 0 4px 12px rgba(56, 189, 248, 0.15);
+  background: #172334;
+}
+
+.carto-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.carto-card-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-strong, #f8fafc);
+  line-height: 1.35;
+}
+
+.carto-badge-status {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.badge-retard { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+.badge-acheve { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge-en-cours { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+
+/* Bloc dédié au tronçon PK Début -> PK Fin */
+.carto-pk-section-card {
+  background: var(--panel, #191f29);
+  border: 1px solid var(--border, #2b3543);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.carto-pk-range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.carto-pk-icon {
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.carto-pk-range-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.carto-pk-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--muted-soft, #6b7a8d);
+  text-transform: uppercase;
+}
+
+.carto-pk-values {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+}
+
+.carto-pk-num {
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.carto-pk-sep {
+  color: var(--muted, #9aa7b8);
+  font-weight: 700;
+}
+
+.carto-pk-dist {
+  color: #38bdf8;
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+.carto-pk-none {
+  color: var(--muted, #9aa7b8);
+  font-style: italic;
+  font-size: 0.72rem;
+}
+
+.carto-subsegments-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+  padding-top: 0.25rem;
+  border-top: 1px dashed var(--border, #2b3543);
+}
+
+.carto-subsegment-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: var(--surface, #1f2632);
+  color: var(--text-2, #dbe3ec);
+  border: 1px solid var(--border, #2b3543);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.carto-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.73rem;
+  color: var(--muted, #9aa7b8);
+}
+
+.carto-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.carto-card-prog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.carto-prog-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-2, #dbe3ec);
+}
+
+.carto-prog-track {
+  width: 100%;
+  height: 4px;
+  background: var(--border, #2b3543);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.carto-prog-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.fill-retard { background: #ef4444; }
+.fill-acheve { background: #10b981; }
+.fill-en-cours { background: #38bdf8; }
+
+.carto-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.15rem;
+  gap: 0.5rem;
+}
+
+.carto-card-hint-click {
+  font-size: 0.65rem;
+  color: var(--muted-soft, #6b7a8d);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.carto-btn-view-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border, #2b3543);
+  background: var(--panel, #191f29);
+  color: var(--text, #e8edf4);
+  text-decoration: none;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.carto-btn-view-detail:hover {
+  background: var(--hover, #232b38);
+  border-color: var(--border-strong, #3a4658);
+  color: var(--text-strong, #f8fafc);
+}
+
+/* --------------------------------------------------------------------------
+   Bannière flottante du tronçon PK sélectionné
+   -------------------------------------------------------------------------- */
+.carto-pk-active-banner {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  max-width: 480px;
+  width: calc(100% - 2rem);
+  background: rgba(25, 31, 41, 0.96);
+  backdrop-filter: blur(10px);
+  border: 1px solid #38bdf8;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.2);
+  padding: 0.75rem 0.95rem;
+  z-index: 950;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  animation: slideDownBanner 0.2s ease-out;
+}
+
+@keyframes slideDownBanner {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.carto-pk-banner-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.carto-pk-banner-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.carto-pk-banner-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.carto-pk-banner-axe {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-pk-banner-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-strong, #f8fafc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.carto-pk-banner-metrics {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border, #2b3543);
+}
+
+.carto-pk-metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.pk-metric-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted-soft, #6b7a8d);
+  text-transform: uppercase;
+}
+
+.pk-metric-val {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text-strong, #f8fafc);
+}
+
+.carto-pk-arrow {
+  color: #38bdf8;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.carto-pk-banner-close {
+  background: var(--surface, #1f2632);
+  border: 1px solid var(--border, #2b3543);
+  color: var(--muted, #9aa7b8);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.carto-pk-banner-close:hover {
+  background: var(--hover, #232b38);
+  color: var(--text-strong, #f8fafc);
+}
+
+/* Style du popup Leaflet pour le tronçon PK */
+.carto-pk-popup-inner {
+  font-family: inherit;
+  font-size: 0.78rem;
+  min-width: 170px;
+  padding: 2px;
+}
+
+.carto-pk-popup-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #38bdf8;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.carto-pk-popup-title {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #f8fafc;
+  margin-bottom: 4px;
+}
+
+.carto-pk-popup-troncon {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: #38bdf8;
+  font-weight: 700;
+  padding: 3px 0;
+  border-top: 1px solid #2b3543;
+}
+
+.carto-pk-popup-av {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   7. Responsive
+   -------------------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .carto-side-drawer {
+    width: calc(100% - 1.7rem);
+    top: auto;
+    height: 50%;
+  }
+
+  .carto-floating-legend {
+    display: none;
+  }
+}

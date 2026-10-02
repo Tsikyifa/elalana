@@ -42,9 +42,7 @@ urlpatterns = [
     #path('api/auth/refresh/', TokenRefreshView.as_view()),
     #########
     path("admin/", admin.site.urls),
-    #path("api/",include('om.urls')),
     path("api/",include('apitp.urls')),
-    path("audience/",include('audience.urls')),
 
     path("travaux/",include('travaux.urls')),
      # 🔥 AJOUT IMPORTANT

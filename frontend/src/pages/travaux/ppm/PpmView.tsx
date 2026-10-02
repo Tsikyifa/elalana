@@ -407,6 +407,7 @@ export function PpmView() {
                         <RowActions
                           row={row}
                           canDelete={isDgtpAdmin}
+                          mode={isDgtpAdmin ? 'full' : 'avancement-only'}
                           onOpen={openModal}
                           onDelete={(target) => handleDelete(target.id)}
                         />

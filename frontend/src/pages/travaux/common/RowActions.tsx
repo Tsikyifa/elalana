@@ -6,6 +6,7 @@ import type { PpmRow } from '../ppm/types'
 type RowActionsProps = {
   row: PpmRow
   canDelete: boolean
+  mode?: 'full' | 'avancement-only'
   onOpen: (mode: 'os' | 'avancement' | 'edit', row: PpmRow) => void
   onDelete: (row: PpmRow) => void
 }
@@ -16,9 +17,10 @@ const GUTTER = 8
 type Position = { top: number; left: number }
 
 /** Menu d'actions d'une ligne : un seul déclencheur neutre, les libellés lèvent l'ambiguïté. */
-export default function RowActions({ row, canDelete, onOpen, onDelete }: RowActionsProps) {
+export default function RowActions({ row, canDelete, mode = 'full', onOpen, onDelete }: RowActionsProps) {
   const [position, setPosition] = useState<Position | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const isAvancementOnly = mode === 'avancement-only'
 
   const close = () => setPosition(null)
 
@@ -26,7 +28,7 @@ export default function RowActions({ row, canDelete, onOpen, onDelete }: RowActi
     const rect = triggerRef.current?.getBoundingClientRect()
     if (!rect) return
 
-    const menuHeight = canDelete ? 196 : 152
+    const menuHeight = isAvancementOnly ? 118 : canDelete ? 196 : 152
     const below = rect.bottom + 6
     const top = below + menuHeight > window.innerHeight - GUTTER
       ? Math.max(GUTTER, rect.top - menuHeight - 6)
@@ -90,16 +92,18 @@ export default function RowActions({ row, canDelete, onOpen, onDelete }: RowActi
               role="menu"
               style={{ top: position.top, left: position.left, width: MENU_WIDTH }}
             >
-              <button
-                type="button"
-                role="menuitem"
-                className="row-actions__item"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); e.preventDefault(); run(() => onOpen('os', row)) }}
-              >
-                <CalendarPlus size={15} weight="bold" aria-hidden="true" />
-                Nouvel OS / Avenant
-              </button>
+              {!isAvancementOnly && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="row-actions__item"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); run(() => onOpen('os', row)) }}
+                >
+                  <CalendarPlus size={15} weight="bold" aria-hidden="true" />
+                  Nouvel OS / Avenant
+                </button>
+              )}
 
               <button
                 type="button"
@@ -112,18 +116,20 @@ export default function RowActions({ row, canDelete, onOpen, onDelete }: RowActi
                 Nouveau relevé d'avancement
               </button>
 
-              <button
-                type="button"
-                role="menuitem"
-                className="row-actions__item"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); e.preventDefault(); run(() => onOpen('edit', row)) }}
-              >
-                <PencilSimple size={15} weight="bold" aria-hidden="true" />
-                Modifier le marché
-              </button>
+              {!isAvancementOnly && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="row-actions__item"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); e.preventDefault(); run(() => onOpen('edit', row)) }}
+                >
+                  <PencilSimple size={15} weight="bold" aria-hidden="true" />
+                  Modifier le marché
+                </button>
+              )}
 
-              {canDelete && (
+              {!isAvancementOnly && canDelete && (
                 <>
                   <div className="row-actions__sep" role="separator" />
                   <button

@@ -5,7 +5,7 @@
  * Exemples : #/dashboard, #/travaux, #/travaux/avancement
  */
 
-export const APP_PAGES = ['dashboard', 'travaux', 'annuaire', 'bac', 'cp'] as const
+export const APP_PAGES = ['dashboard', 'travaux', 'cartographie', 'annuaire', 'bac', 'cp', 'users'] as const
 export type AppPage = (typeof APP_PAGES)[number]
 
 export const TRAVAUX_TABS = ['ppm', 'glissements', 'avancement'] as const
