@@ -11,7 +11,9 @@ import {
   Smiley,
   X,
 } from '@phosphor-icons/react'
+import { API_BASE_URL } from '../../../api/client'
 import { createMessage, deleteMessage, fetchMessages } from '../../../api/travaux.api'
+import { fetchCurrentUser } from '../../../api/users.api'
 import type { MessageMarcheItem } from '../../../types/travaux'
 import MessageRowActions from './actions/MessageRowActions'
 
@@ -73,6 +75,7 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
   const [contenu, setContenu] = useState('')
   const [envoi, setEnvoi] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null)
 
   // Pièce jointe en cours
   const [fichier, setFichier] = useState<File | null>(null)
@@ -95,6 +98,49 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const emojiPickerRef = useRef<HTMLDivElement>(null)
   const emojiBtnRef = useRef<HTMLButtonElement>(null)
+
+  const isMessageMine = (message: MessageMarcheItem) => {
+    if (currentUserId === null) return Boolean(message.est_moi)
+
+    const auteurId = message.auteur == null ? null : Number(message.auteur)
+    if (Number.isFinite(auteurId)) {
+      return auteurId === currentUserId
+    }
+
+    return Boolean(message.est_moi)
+  }
+
+  const normalizeMessage = (message: MessageMarcheItem): MessageMarcheItem => ({
+    ...message,
+    est_moi: isMessageMine(message),
+  })
+
+  const replaceMessageInList = (prev: MessageMarcheItem[], incoming: MessageMarcheItem, tempId?: string | number) => {
+    const next = prev.filter((m) => {
+      const sameTemp = tempId !== undefined && String(m.id) === String(tempId)
+      const sameIncoming = String(m.id) === String(incoming.id)
+      return !sameTemp && !sameIncoming
+    })
+
+    return [...next, { ...normalizeMessage(incoming), est_moi: true }]
+  }
+
+  useEffect(() => {
+    let active = true
+
+    fetchCurrentUser()
+      .then((me) => {
+        if (!active) return
+        setCurrentUserId(me.user.id)
+      })
+      .catch(() => {
+        if (active) setCurrentUserId(null)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   // Fermer le sélecteur d'émojis si clic en dehors (mais pas sur le bouton qui le gère lui-même)
   useEffect(() => {
@@ -140,7 +186,8 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
       fetchMessages(marcheId)
         .then((data) => {
           if (!actif) return
-          setMessages(data)
+          const normalized = data.map((message) => normalizeMessage(message))
+          setMessages(normalized)
           setErreur(null)
         })
         .catch(() => {
@@ -161,6 +208,7 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
   }, [marcheId])
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const socketRef = useRef<WebSocket | null>(null)
 
   const scrollToBottom = (smooth = false) => {
     requestAnimationFrame(() => {
@@ -171,6 +219,68 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
       }
     })
   }
+
+  useEffect(() => {
+    const apiBase = API_BASE_URL.startsWith('http')
+      ? API_BASE_URL
+      : `${window.location.origin}${API_BASE_URL.startsWith('/') ? '' : '/'}${API_BASE_URL}`
+
+    const apiOrigin = new URL(apiBase)
+    const wsProtocol = apiOrigin.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${wsProtocol}//${apiOrigin.host}/ws/marche/${encodeURIComponent(marcheId)}/`
+    const ws = new WebSocket(wsUrl)
+    socketRef.current = ws
+
+    ws.onopen = () => {
+      console.info('[discussion] socket connected', wsUrl)
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          type?: string
+          message?: MessageMarcheItem
+          message_id?: number | string
+          client_message_id?: string | number
+          marche_id?: string
+        }
+
+        if (!payload || payload.marche_id !== marcheId) return
+
+        if (payload.type === 'message.created' && payload.message) {
+          const clientMessageId = payload.client_message_id
+          const normalizedMessage = normalizeMessage({ ...payload.message })
+
+          if (clientMessageId) {
+            setMessages((prev) => replaceMessageInList(prev, normalizedMessage, clientMessageId))
+            return
+          }
+
+          setMessages((prev) => replaceMessageInList(prev, normalizedMessage))
+          return
+        }
+
+        if (payload.type === 'message.deleted' && payload.message_id !== undefined) {
+          setMessages((prev) => prev.filter((m) => String(m.id) !== String(payload.message_id)))
+        }
+      } catch {
+        // Ignore malformed payloads.
+      }
+    }
+
+    ws.onerror = () => {
+      setErreur('La connexion en temps réel n’est pas disponible pour le moment.')
+    }
+
+    ws.onclose = () => {
+      socketRef.current = null
+    }
+
+    return () => {
+      ws.close()
+      socketRef.current = null
+    }
+  }, [marcheId])
 
   // Scroll vers le bas à l'arrivée de messages
   useEffect(() => {
@@ -222,16 +332,71 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
     const texte = contenu.trim()
     if ((!texte && !fichier) || envoi) return
 
+    const optimisticId = `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const optimisticPreview = fichier && fichier.type.startsWith('image/') ? URL.createObjectURL(fichier) : null
+
+    if (!fichier && socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      const localMessage: MessageMarcheItem = {
+        id: optimisticId,
+        marche: marcheId,
+        auteur_nom: 'Moi',
+        contenu: texte,
+        fichier: null,
+        fichier_url: null,
+        fichier_nom: null,
+        fichier_taille: null,
+        est_image: false,
+        created_at: new Date().toISOString(),
+        est_moi: true,
+      }
+
+      setMessages((prev) => [...prev, localMessage])
+      setContenu('')
+      setShowEmoji(false)
+      setTimeout(() => scrollToBottom(true), 50)
+
+      socketRef.current.send(JSON.stringify({
+        type: 'message.send',
+        marche: marcheId,
+        contenu: texte,
+        client_message_id: optimisticId,
+      }))
+      return
+    }
+
+    const optimisticMessage: MessageMarcheItem = {
+      id: optimisticId,
+      marche: marcheId,
+      auteur_nom: 'Moi',
+      contenu: texte || 'Pièce jointe',
+      fichier: fichier ? fichier.name : null,
+      fichier_url: optimisticPreview ?? null,
+      fichier_nom: fichier ? fichier.name : null,
+      fichier_taille: fichier ? fichier.size : null,
+      est_image: Boolean(fichier && fichier.type.startsWith('image/')),
+      created_at: new Date().toISOString(),
+      est_moi: true,
+    }
+
+    setMessages((prev) => [...prev, optimisticMessage])
+    setContenu('')
+    supprimerFichier()
+    setShowEmoji(false)
+    setTimeout(() => scrollToBottom(true), 50)
+
     setEnvoi(true)
     setErreur(null)
     try {
       const message = await createMessage({ marche: marcheId, contenu: texte, fichier })
-      setMessages((prev) => [...prev, message])
-      setContenu('')
-      supprimerFichier()
-      setShowEmoji(false)
-      setTimeout(() => scrollToBottom(true), 50)
+      if (optimisticPreview) {
+        URL.revokeObjectURL(optimisticPreview)
+      }
+      setMessages((prev) => replaceMessageInList(prev, message, optimisticId))
     } catch {
+      if (optimisticPreview) {
+        URL.revokeObjectURL(optimisticPreview)
+      }
+      setMessages((prev) => prev.filter((m) => String(m.id) !== String(optimisticId)))
       setErreur("Le message n'a pas pu être envoyé.")
     } finally {
       setEnvoi(false)
@@ -356,7 +521,8 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
             const firstInGroup = !prev || !sameAuthor(prev, m) || !closeInTime(prev, m)
             const lastInGroup = !next || !sameAuthor(next, m) || !closeInTime(m, next)
 
-            if (m.est_moi) {
+            const isMine = isMessageMine(m)
+            if (isMine) {
               return (
                 <div key={m.id} className="discussion-message">
                   <div className="discussion-row-inner is-me" style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -410,10 +576,24 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
             }
 
             // Messages des autres utilisateurs
+            const showAvatar = lastInGroup
             return (
               <div key={m.id} className="discussion-message">
-                <div className="discussion-row-inner is-other" style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <div className="discussion-avatar" title={m.auteur_nom} aria-hidden="true">{firstInGroup ? initiales(m.auteur_nom) : ''}</div>
+                <div className="discussion-row-inner is-other" style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                  <div
+                    className="discussion-avatar"
+                    title={m.auteur_nom}
+                    aria-hidden="true"
+                    style={{
+                      opacity: showAvatar ? 1 : 0,
+                      visibility: showAvatar ? 'visible' : 'hidden',
+                      width: 34,
+                      minWidth: 34,
+                      alignSelf: 'flex-end',
+                    }}
+                  >
+                    {showAvatar ? initiales(m.auteur_nom) : ''}
+                  </div>
 
                   <div className="discussion-content">
                     {firstInGroup && (
@@ -459,7 +639,7 @@ export default function DiscussionTab({ marcheId }: DiscussionTabProps) {
                     </div>
 
                     {lastInGroup && (
-                      <div className="text-muted small message-time" style={{ marginTop: 4 }}>{formatDateTime(m.created_at)}</div>
+                      <div className="text-muted small message-time" style={{ marginTop: 4, alignSelf: 'flex-end' }}>{formatDateTime(m.created_at)}</div>
                     )}
                   </div>
                 </div>

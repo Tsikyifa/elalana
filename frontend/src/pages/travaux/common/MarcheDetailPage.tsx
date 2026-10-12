@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Building, MapPin, Ruler, SpinnerGap, User } from '@phosphor-icons/react'
-import { deleteAvancement, fetchMarche } from '../../../api/travaux.api'
+import { deleteAvancement, fetchAxe, fetchMarche } from '../../../api/travaux.api'
 import { fetchCurrentUser } from '../../../api/users.api'
 import { buildHash } from '../../../routes/hashRoute'
 import type { AvancementItem, OSItem } from '../../../types/travaux'
@@ -8,7 +8,6 @@ import type { MarcheItem } from '../../../types/travaux'
 import type { PpmRow } from '../ppm/types'
 import AvancementModal from './actions/AvancementModal'
 import AvancementRowActions from './actions/AvancementRowActions'
-import MarcheActions from './actions/MarcheActions'
 import DiscussionTab from './DiscussionTab'
 import EtiquetteSituation from './EtiquetteSituation'
 import RapportTab from './RapportTab'
@@ -72,7 +71,8 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
   const [numMarche, setNumMarche] = useState<string | null>(null)
   const [descriptionText, setDescriptionText] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [canMutate, setCanMutate] = useState(true)
+  const [canManageMarche, setCanManageMarche] = useState(true)
+  const [canManageProgress, setCanManageProgress] = useState(true)
   const [editingAv, setEditingAv] = useState<AvancementItem | null>(null)
   // Relevé vers lequel l'onglet Rapport doit défiler, quand on vient de
   // l'historique de l'onglet Détail.
@@ -82,13 +82,30 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
     setLoading(true)
     try {
       const m = await fetchMarche(marcheId)
-      setMarcheRaw(m)
-      setMarket(marcheToRow(m))
-      setAvancements(m.avancements ?? [])
-      setOrdres(m.ordres_service ?? [])
-      setDetail({ longueur_totale: m.longueur_totale, axe_detail: m.axe_detail })
-      setNumMarche(m.num_marche ?? null)
-      setDescriptionText(m.description ?? null)
+      let hydrated = m
+      const axePmMissing = !m.axe_detail || !m.axe_detail.attache_suivi_display
+      if (m.axe && axePmMissing) {
+        try {
+          const axe = await fetchAxe(m.axe)
+          hydrated = {
+            ...m,
+            axe_detail: {
+              ...m.axe_detail,
+              ...axe,
+            },
+          }
+        } catch {
+          hydrated = m
+        }
+      }
+
+      setMarcheRaw(hydrated)
+      setMarket(marcheToRow(hydrated))
+      setAvancements(hydrated.avancements ?? [])
+      setOrdres(hydrated.ordres_service ?? [])
+      setDetail({ longueur_totale: hydrated.longueur_totale, axe_detail: hydrated.axe_detail })
+      setNumMarche(hydrated.num_marche ?? null)
+      setDescriptionText(hydrated.description ?? null)
     } catch {
       setMarket(null)
       setAvancements([])
@@ -102,10 +119,15 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
     void fetchCurrentUser()
       .then((response) => {
         const roles = response.user.roles ?? []
+        const isProjectManager = response.user.is_project_manager ?? roles.includes('chef_de_projet')
         const isReadOnlyViewer = roles.some((role) => ['visiteur', 'ministre', 'viewer', 'audience_ministre'].includes(role))
-        setCanMutate(!isReadOnlyViewer)
+        setCanManageMarche(!(isProjectManager || isReadOnlyViewer))
+        setCanManageProgress(!isReadOnlyViewer)
       })
-      .catch(() => setCanMutate(true))
+      .catch(() => {
+        setCanManageMarche(true)
+        setCanManageProgress(true)
+      })
 
     loadMarche()
 
@@ -240,13 +262,6 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                             </span>
                           </div>
                         )}
-                        {canMutate && (
-                          <MarcheActions
-                            ariaLabel={`Actions marché ${market.id}`}
-                            onEdit={() => { window.alert('Modifier marché — à implémenter') }}
-                            onDelete={() => { if (window.confirm('Supprimer ce marché ?')) { window.alert('Suppression déclenchée — implémenter') } }}
-                          />
-                        )}
                       </div>
                     </div>
                   </div>
@@ -258,7 +273,7 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
             {tab === 'detail' && (
               <div>
                 <div className="row g-3 mb-4">
-                  <div className="col-md-4">
+                  <div className="col-md-3">
                     <div className="p-3 border rounded bg-white shadow-sm" style={{ borderColor: 'var(--border)' }}>
                       <small className="text-muted d-block fw-bold small text-uppercase mb-1">Axe</small>
                       <p className="mb-0 fw-bold small" style={{ color: 'var(--text-strong)' }}>
@@ -267,7 +282,7 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                       </p>
                     </div>
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-md-3">
                     <div className="p-3 border rounded bg-white shadow-sm" style={{ borderColor: 'var(--border)' }}>
                       <small className="text-muted d-block fw-bold small text-uppercase mb-1">Titulaire</small>
                       <p className="mb-0 fw-bold small text-truncate" style={{ color: 'var(--text-strong)' }}>
@@ -276,7 +291,16 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                       </p>
                     </div>
                   </div>
-                  <div className="col-md-4">
+                  <div className="col-md-3">
+                    <div className="p-3 border rounded bg-white shadow-sm" style={{ borderColor: 'var(--border)' }}>
+                      <small className="text-muted d-block fw-bold small text-uppercase mb-1">Chef de projet</small>
+                      <p className="mb-0 fw-bold small text-truncate" style={{ color: 'var(--text-strong)' }}>
+                        <User size={14} weight="regular" style={{ color: 'var(--muted)', marginRight: 6 }} aria-hidden="true" />
+                        {marcheRaw?.axe_detail?.attache_suivi_display ?? '—'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="col-md-3">
                     <div className="p-3 border rounded bg-white shadow-sm d-flex align-items-center" style={{ borderColor: 'var(--border)' }}>
                       <div style={{ flex: 1 }}>
                         <small className="text-muted d-block fw-bold small text-uppercase mb-1">Financement</small>
@@ -481,7 +505,7 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                                 {Number(av.avancement_financier).toFixed(1)}%
                               </td>
                               <td className="text-center" onClick={(event) => event.stopPropagation()}>
-                                {canMutate && (
+                                {canManageProgress && (
                                   <AvancementRowActions
                                     av={av}
                                     onEdit={(a) => setEditingAv(a)}
@@ -490,6 +514,10 @@ export default function MarcheDetailPage({ marcheId }: MarcheDetailPageProps) {
                                       if (!window.confirm('Supprimer ce relevé d\'avancement ?')) return
                                       try {
                                         await deleteAvancement(a.id)
+                                        // Mise à jour optimiste : retirer immédiatement du state
+                                        // local pour un feedback visuel instantané, sans attendre
+                                        // le re-fetch serveur (qui peut retourner un cache stale).
+                                        setAvancements((prev) => prev.filter((item) => item.id !== a.id))
                                         if (typeof window !== 'undefined') {
                                           window.dispatchEvent(new CustomEvent('avancement:deleted'))
                                         }

@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 if not SECRET_KEY:
     raise RuntimeError("DJANGO_SECRET_KEY environment variable is not set")
-DEBUG = False
+DEBUG = os.getenv('DJANGO_DEBUG', 'False').strip().lower() in {'1', 'true', 'yes', 'on'}
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'django_filters',
     # Utilitaires
     'corsheaders',
+    'channels',
     'import_export',
     'travaux',
     'apitp',
@@ -96,6 +97,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "TPAPP.wsgi.application"
+ASGI_APPLICATION = "TPAPP.asgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
 os.environ["PGCLIENTENCODING"] = "UTF8"
 
 # Database
@@ -143,7 +152,6 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'apitp.authentification.CookieTokenAuthentication', # Remplacez par le chemin réel vers votre classe
         'rest_framework.authentication.TokenAuthentication', # On garde l'original en secours
-        'rest_framework.authentication.SessionAuthentication',
     )
 }
 
@@ -157,14 +165,6 @@ CORS_ALLOWED_ORIGINS = [
     "https://dev.elalana.mg",
     "https://back.elalana.mg",
     "https://elalana.mg",
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://dev.elalana.mg",
-    "https://back.elalana.mg",
-    "https://elalana.mg",
-    "http://localhost:5173",
-    "http://localhost:3000",
 ]
 
 CORS_ALLOW_METHODS = [
@@ -182,6 +182,8 @@ CORS_ALLOW_HEADERS = [
     "content-type",
     "x-csrftoken",
     "x-requested-with",
+    "cache-control",
+    "pragma",
 ]
 
 # 7. Configuration django-allauth (SITE_ID OBLIGATOIRE)
@@ -237,18 +239,49 @@ IMPORT_EXPORT_SKIP_ADMIN_LOG = True
 # -------------------------------------------------------------------
 # COOKIES CROSS-DOMAIN (fix prod / cookies + CSRF)
 # -------------------------------------------------------------------
-SESSION_COOKIE_SECURE = True
-SESSION_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_DOMAIN = '.elalana.mg'
+if DEBUG:
+    AUTH_COOKIE_DOMAIN = None
+    AUTH_COOKIE_PATH = '/'
+    AUTH_COOKIE_SECURE = False
+    AUTH_COOKIE_SAMESITE = 'Lax'
 
-CSRF_COOKIE_SECURE = True
-CSRF_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_HTTPONLY = False
-CSRF_COOKIE_DOMAIN = '.elalana.mg'
+    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_DOMAIN = None
+    SESSION_COOKIE_PATH = '/'
+
+    CSRF_COOKIE_SECURE = False
+    CSRF_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_HTTPONLY = False
+    CSRF_COOKIE_DOMAIN = None
+    CSRF_COOKIE_PATH = '/'
+else:
+    AUTH_COOKIE_DOMAIN = '.elalana.mg'
+    AUTH_COOKIE_PATH = '/'
+    AUTH_COOKIE_SECURE = True
+    AUTH_COOKIE_SAMESITE = 'None'
+
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'None'
+    # Limit session cookie to API host only to avoid cross-subdomain session ghosts
+    SESSION_COOKIE_DOMAIN = 'back.elalana.mg'
+    SESSION_COOKIE_PATH = '/'
+
+    CSRF_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_HTTPONLY = False
+    CSRF_COOKIE_DOMAIN = '.elalana.mg'
+    CSRF_COOKIE_PATH = '/'
+
+SESSION_COOKIE_NAME = 'sessionid_elalana'
 
 CSRF_TRUSTED_ORIGINS = [
     'https://dev.elalana.mg',
     'https://elalana.mg',
     'https://www.elalana.mg',
     'https://back.elalana.mg',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]

@@ -27,6 +27,8 @@ export type AxeOption = {
   type_axe?: string
   type_axe_display?: string
   longueur_total?: number | string
+  attache_suivi?: number | string | null
+  attache_suivi_display?: string | null
 }
 
 /**
@@ -191,11 +193,16 @@ export type MarcheItem = {
   etape_actuelle?: string
   etape_actuelle_display?: string
   dernier_avancement?: {
+    id?: number | string
+    marche?: string
+    date_avancement?: string | null
     avancement_physique: number
     avancement_financier: number
     avancement_temporel: number
     situation_w: string
     situation_w_display: string
+    detail_situation?: string
+    observation?: string
     est_en_retard: boolean
   }
   date_demarrage_effective?: string | null
@@ -228,6 +235,11 @@ export type TravauxGlisseItem = {
 export type DashboardStatsResponse = {
   summary_cards: {
     budget_engage: number
+    budget_breakdown?: {
+      travaux: number
+      bac: number
+      convention: number
+    }
     avancement_physique: number
     marches_en_retard: number
     marches_acheves: number

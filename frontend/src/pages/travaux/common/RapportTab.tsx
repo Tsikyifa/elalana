@@ -5,6 +5,7 @@ import {
   CaretRight,
   CaretUp,
   ClockCounterClockwise,
+  Download,
   MagnifyingGlassPlus,
   Paperclip,
   WarningCircle,
@@ -16,6 +17,18 @@ import EtiquetteSituation from './EtiquetteSituation'
 const formatDate = (s?: string | null) => {
   if (!s) return '—'
   try { return new Date(s).toLocaleDateString('fr-FR') } catch { return s }
+}
+
+/** Extrait le nom de fichier de l'URL ou du chemin */
+const extractFileName = (url?: string | null): string => {
+  if (!url) return 'Fichier'
+  try {
+    // Pour une URL comme /media/travaux/2026/10/09/file.pdf, retourner file.pdf
+    const parts = url.split('/')
+    return parts[parts.length - 1] || 'Fichier'
+  } catch {
+    return 'Fichier'
+  }
 }
 
 const CARD = { border: '1px solid var(--border)' } as const
@@ -172,19 +185,66 @@ function PiecesJointes({ medias }: { medias?: MediaAvancementItem[] }) {
           gardent leur lien, faute de visionneuse dans l'application. */}
       {autres.length > 0 && (
         <div className="d-flex flex-column align-items-start gap-2" style={{ marginTop: images.length > 0 ? 12 : 0 }}>
-          {autres.map((m) => (
-            <a
-              key={m.id}
-              href={m.fichier_url ?? '#'}
-              target="_blank"
-              rel="noreferrer"
-              className="d-inline-flex align-items-center gap-2 small border rounded px-3 py-2"
-              style={{ borderColor: 'var(--border)', color: 'var(--text)', textDecoration: 'none' }}
-            >
-              <Paperclip size={14} weight="bold" aria-hidden="true" />
-              {m.legende || 'Pièce jointe'}
-            </a>
-          ))}
+          {autres.map((m) => {
+            const fileName = extractFileName(m.fichier_url || m.fichier)
+            const handleDownload = async (e: React.MouseEvent<HTMLButtonElement>) => {
+              e.preventDefault()
+              const url = m.fichier_url ?? '#'
+              if (!url || url === '#') return
+              
+              try {
+                const response = await fetch(url)
+                const blob = await response.blob()
+                const blobUrl = window.URL.createObjectURL(blob)
+                const link = document.createElement('a')
+                link.href = blobUrl
+                link.download = fileName
+                document.body.appendChild(link)
+                link.click()
+                document.body.removeChild(link)
+                window.URL.revokeObjectURL(blobUrl)
+              } catch {
+                // Fallback : ouvrir dans un nouvel onglet si fetch échoue
+                window.open(url, '_blank')
+              }
+            }
+            
+            return (
+              <div
+                key={m.id}
+                className="d-flex align-items-center justify-content-between w-100 small border rounded px-3 py-2"
+                style={{ borderColor: 'var(--border)', gap: 8 }}
+              >
+                <div className="d-flex align-items-center gap-2 flex-grow-1 min-width-0">
+                  <Paperclip size={14} weight="bold" aria-hidden="true" style={{ flexShrink: 0, color: 'var(--muted)' }} />
+                  <div className="d-flex flex-column flex-grow-1 min-width-0">
+                    <a
+                      href={m.fichier_url ?? '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-truncate"
+                      style={{ color: 'var(--text)', textDecoration: 'none' }}
+                      title={fileName}
+                    >
+                      <strong>{fileName}</strong>
+                    </a>
+                    {m.legende && m.legende !== fileName && (
+                      <small style={{ color: 'var(--muted)', marginTop: 2 }}>{m.legende}</small>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  className="btn btn-sm"
+                  style={{ padding: '4px 8px', background: 'var(--border)', color: 'var(--text)', border: 'none', borderRadius: 4, flexShrink: 0, cursor: 'pointer' }}
+                  title="Télécharger"
+                >
+                  <Download size={14} weight="bold" aria-hidden="true" />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
 

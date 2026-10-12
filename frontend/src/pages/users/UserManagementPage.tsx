@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { Key, Plus, ShieldCheck, Trash, UserPlus, UsersThree } from '@phosphor-icons/react'
 import { createUserManagement, deleteUserManagement, fetchCurrentUser, fetchUserManagement } from '../../api/users.api'
 import type { UserAccount, UserRoleOption } from '../../api/users.api'
@@ -61,12 +61,18 @@ export function UserManagementPage() {
   const [roleFilter, setRoleFilter] = useState('all')
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null)
+  const latestUsersRequestRef = useRef(0)
 
-  const loadUsers = async () => {
+  const loadUsers = async (signal?: AbortSignal) => {
+    const requestId = ++latestUsersRequestRef.current
     setLoading(true)
     setError(null)
     try {
-      const res = await fetchUserManagement()
+      const res = await fetchUserManagement(signal)
+      if (requestId !== latestUsersRequestRef.current) {
+        return
+      }
+
       const normalizedUsers = res.users.map((user) => ({
         ...user,
         roles: Array.from(new Set((user.roles ?? []).map((role) => normalizeRoleName(role)).filter((role): role is string => Boolean(role)))),
@@ -77,14 +83,21 @@ export function UserManagementPage() {
         .map((role) => ({ ...role, name: normalizeRoleName(role.name) ?? role.name }))
         .filter((role) => role.name !== null && ACTIVE_ROLE_NAMES.includes(role.name as typeof ACTIVE_ROLE_NAMES[number])))
     } catch (err) {
+      if (signal?.aborted) {
+        return
+      }
       const message = err instanceof Error ? err.message : 'Impossible de charger les utilisateurs.'
       setError(message)
     } finally {
-      setLoading(false)
+      if (requestId === latestUsersRequestRef.current) {
+        setLoading(false)
+      }
     }
   }
 
   useEffect(() => {
+    const controller = new AbortController()
+
     const initialize = async () => {
       try {
         const me = await fetchCurrentUser()
@@ -93,10 +106,14 @@ export function UserManagementPage() {
         setCurrentUserId(null)
       }
 
-      await loadUsers()
+      await loadUsers(controller.signal)
     }
 
     void initialize()
+
+    return () => {
+      controller.abort()
+    }
   }, [])
 
   const roleOptions = useMemo(
@@ -154,7 +171,7 @@ export function UserManagementPage() {
 
     try {
       const normalizedRole = normalizeRoleName(form.role) ?? form.role
-      await createUserManagement({
+      const createdUser = await createUserManagement({
         username: form.username,
         email: form.email || undefined,
         password: form.password,
@@ -163,10 +180,15 @@ export function UserManagementPage() {
         roles: normalizedRole ? [normalizedRole] : [],
       })
 
+      const normalizedCreatedUser = {
+        ...createdUser,
+        roles: Array.from(new Set((createdUser.roles ?? []).map((role) => normalizeRoleName(role)).filter((role): role is string => Boolean(role)))),
+      }
+
+      setUsers((previousUsers) => [normalizedCreatedUser, ...previousUsers])
       setSuccess(`L’utilisateur ${form.username} a été créé avec le rôle ${ROLE_LABELS[normalizeRoleName(form.role) ?? form.role] ?? form.role}.`)
       setForm(EMPTY_FORM)
       setIsCreateModalOpen(false)
-      await loadUsers()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Impossible de créer l’utilisateur.'
       setError(message)
@@ -197,8 +219,8 @@ export function UserManagementPage() {
 
     try {
       await deleteUserManagement(userId)
+      setUsers((previousUsers) => previousUsers.filter((user) => user.id !== userId))
       setSuccess(`L’utilisateur ${username} a été supprimé.`)
-      await loadUsers()
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Impossible de supprimer l’utilisateur.'
       setError(message)

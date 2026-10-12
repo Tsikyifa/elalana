@@ -901,6 +901,36 @@ class TravauxGlisse(models.Model): # Majuscules et singulier
             raise ValidationError("L'année de report doit être supérieure à l'année d'origine.")
 
 
+class Notification(models.Model):
+    """Notification in-app pour l'utilisateur connecté."""
+
+    TYPE_CHOICES = [
+        ('marche_assigne', 'Marché assigné'),
+        ('message_nouveau', 'Nouveau message'),
+        ('avancement_nouveau', 'Nouvel avancement'),
+        ('systeme', 'Système'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    type = models.CharField(max_length=40, choices=TYPE_CHOICES, default='systeme')
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    related_model = models.CharField(max_length=50, blank=True, null=True)
+    related_id = models.CharField(max_length=255, blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.title}"
+
+
 class MessageMarche(models.Model):
     """
     Message échangé entre utilisateurs à propos d'un marché (onglet Discussion).

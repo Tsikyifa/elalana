@@ -1,16 +1,30 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowsOut,
+  CalendarBlank,
   CalendarPlus,
   ChartBar,
+  ChatText,
   CheckCircle,
   Eye,
+  FileText,
   MagnifyingGlass,
+  NotePencil,
+  Paperclip,
   PencilSimple,
   PlusSquare,
   SpinnerGap,
   WarningCircle,
+  X,
 } from '@phosphor-icons/react'
-import { deleteMarche, fetchDashboardStats, fetchMarches, fetchAxes } from '../../../api/travaux.api'
+import {
+  createAvancement,
+  deleteMarche,
+  fetchDashboardStats,
+  fetchMarches,
+  fetchAxes,
+  updateAvancement,
+} from '../../../api/travaux.api'
 import type { DashboardStatsResponse, MarcheItem } from '../../../types/travaux'
 import type { PpmRow } from '../ppm/types'
 import { buildHash } from '../../../routes/hashRoute'
@@ -65,14 +79,103 @@ export default function AvancementView({ onNewMarche, canCreateMarche = true, ca
   const [typeAxeFilter, setTypeAxeFilter] = useState('')
   const [situationFilter, setSituationFilter] = useState('')
   const [retardFilter, setRetardFilter] = useState('')
-  const [isEditMode, setIsEditMode] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return window.localStorage.getItem('travaux-reporting-edit-mode') === 'true'
-  })
+  const [isEditMode, setIsEditMode] = useState(false)
 
   // Modals state
   const [selectedRow, setSelectedRow] = useState<PpmRow | null>(null)
   const [activeModal, setActiveModal] = useState<'detail' | 'avancement' | 'os' | 'edit' | null>(null)
+  const [quickSavingIds, setQuickSavingIds] = useState<Record<string, boolean>>({})
+  const [draftProgress, setDraftProgress] = useState<Record<string, { physique: number | ''; financier: number | '' }>>({})
+  const [draftDate, setDraftDate] = useState<Record<string, string>>({})
+  const [draftDetailSituation, setDraftDetailSituation] = useState<Record<string, string>>({})
+  const [draftObservation, setDraftObservation] = useState<Record<string, string>>({})
+  const [draftFiles, setDraftFiles] = useState<Record<string, File[]>>({})
+  const [expandedTextModal, setExpandedTextModal] = useState<{
+    row: PpmRow
+    field: 'detail' | 'obs'
+    title: string
+    value: string
+  } | null>(null)
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    index: 52,
+    objet: 180,
+    pk: 150,
+    date: 130,
+    mdc: 110,
+    titulaire: 170,
+    financement: 130,
+    temporel: 120,
+    observation: 320,
+    physique: 110,
+    financier: 110,
+    piecesJointes: 170,
+    action: 150,
+    situation: 120,
+  })
+  const activeResizeRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null)
+
+  const beginColumnResize = useCallback((key: string, event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    activeResizeRef.current = {
+      key,
+      startX: event.clientX,
+      startWidth: columnWidths[key] ?? 120,
+    }
+  }, [columnWidths])
+
+  useEffect(() => {
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!activeResizeRef.current) return
+      const { key, startX, startWidth } = activeResizeRef.current
+      const delta = event.clientX - startX
+      const nextWidth = Math.max(80, startWidth + delta)
+      setColumnWidths((prev) => ({ ...prev, [key]: nextWidth }))
+    }
+
+    const handleMouseUp = () => {
+      activeResizeRef.current = null
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [])
+
+  const resizeHandle = (key: string) => (
+    <div
+      onMouseDown={(event) => beginColumnResize(key, event)}
+      style={{
+        position: 'absolute',
+        top: 0,
+        right: -4,
+        width: 10,
+        height: '100%',
+        cursor: 'col-resize',
+        zIndex: 2,
+        background: 'transparent',
+      }}
+    />
+  )
+
+  const isProgressOnlyManager = !canCreateMarche && canManageProgress
+  const allowInlineProgressEdit = isEditMode && canManageProgress
+  const showTemporalColumn = !isProgressOnlyManager || !isEditMode
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    if (isProgressOnlyManager || !canManageProgress) {
+      setIsEditMode(false)
+      window.localStorage.setItem('travaux-reporting-edit-mode', 'false')
+      return
+    }
+
+    const saved = window.localStorage.getItem('travaux-reporting-edit-mode') === 'true'
+    setIsEditMode(saved)
+  }, [isProgressOnlyManager, canManageProgress])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -267,6 +370,98 @@ export default function AvancementView({ onNewMarche, canCreateMarche = true, ca
     setActiveModal(mode)
   }
 
+  const handleInlineProgressSave = useCallback(async (row: PpmRow, nextPhysique: number, nextFinancier: number) => {
+    const market = marches.find((m) => String(m.id) === row.id)
+    if (!market) return
+
+    const latest = market.dernier_avancement
+    // Use dernier_avancement for detecting existing records — the list API
+    // (/travaux/marches/) does NOT populate `avancements`, so
+    // `market.avancements?.[0]` was always undefined, causing a new
+    // avancement to be created every time instead of updating the existing one.
+    const existing = (market.avancements?.[0]) ?? (latest?.id ? latest as any : undefined)
+    const selectedDetailSituation = draftDetailSituation[row.id] ?? (latest?.detail_situation ?? '')
+    const selectedObservation = draftObservation[row.id] ?? (latest?.observation ?? '')
+    const selectedDate = draftDate[row.id] || latest?.date_avancement || new Date().toISOString().slice(0, 10)
+    const selectedFiles = draftFiles[row.id] ?? []
+    const payload = {
+      marche: market.id,
+      date_avancement: selectedDate,
+      avancement_physique: Number.isFinite(nextPhysique) ? nextPhysique : Number(latest?.avancement_physique ?? 0),
+      avancement_financier: Number.isFinite(nextFinancier) ? nextFinancier : Number(latest?.avancement_financier ?? 0),
+      situation_w: (latest?.situation_w ?? 'En_cours') as 'En_cours' | 'Arrete' | 'Acheve' | 'Résilié',
+      detail_situation: selectedDetailSituation,
+      observation: selectedObservation,
+    }
+
+    setQuickSavingIds((prev) => ({ ...prev, [row.id]: true }))
+    try {
+      if (existing?.id) {
+        await updateAvancement(existing.id, payload)
+      } else {
+        const file = selectedFiles[0] ?? null
+        const legend = file ? 'Pièce jointe du relevé' : undefined
+        await createAvancement(payload, file, legend, selectedFiles)
+      }
+      await loadData()
+      setDraftProgress((prev) => {
+        const next = { ...prev }
+        delete next[row.id]
+        return next
+      })
+      setDraftDate((prev) => {
+        const next = { ...prev }
+        delete next[row.id]
+        return next
+      })
+      setDraftDetailSituation((prev) => {
+        const next = { ...prev }
+        delete next[row.id]
+        return next
+      })
+      setDraftObservation((prev) => {
+        const next = { ...prev }
+        delete next[row.id]
+        return next
+      })
+      setDraftFiles((prev) => {
+        const next = { ...prev }
+        delete next[row.id]
+        return next
+      })
+      if (isProgressOnlyManager) {
+        setIsEditMode(false)
+      }
+    } catch {
+      alert('Erreur lors de l\'enregistrement du relevé d\'avancement.')
+    } finally {
+      setQuickSavingIds((prev) => ({ ...prev, [row.id]: false }))
+    }
+  }, [marches, draftDate, draftDetailSituation, draftObservation, draftFiles, loadData, isProgressOnlyManager])
+
+  const handleProgressValidation = async (row: PpmRow) => {
+    const draft = draftProgress[row.id] ?? {
+      physique: Number.parseFloat(row.physique.replace('%', '')) || 0,
+      financier: Number.parseFloat(row.financier.replace('%', '')) || 0,
+    }
+    const physique = draft.physique === '' ? 0 : Number(draft.physique)
+    const financier = draft.financier === '' ? 0 : Number(draft.financier)
+    await handleInlineProgressSave(row, physique, financier)
+  }
+
+  const handleCancelProgressMode = () => {
+    setIsEditMode(false)
+    setDraftProgress({})
+    setDraftDate({})
+    setDraftDetailSituation({})
+    setDraftObservation({})
+    setDraftFiles({})
+    setExpandedTextModal(null)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('travaux-reporting-edit-mode', 'false')
+    }
+  }
+
   const handleDelete = async (row: PpmRow) => {
     const confirmed = window.confirm('Supprimer définitivement le marché sélectionné ?')
     if (!confirmed) return
@@ -385,7 +580,7 @@ export default function AvancementView({ onNewMarche, canCreateMarche = true, ca
                 Nouveau marché
               </button>
             )}
-            {canManageProgress && (
+            {!isProgressOnlyManager && canManageProgress && (
               <button
                 type="button"
                 className={`mode-toggle ${isEditMode ? 'is-edit' : ''}`}
@@ -478,11 +673,17 @@ export default function AvancementView({ onNewMarche, canCreateMarche = true, ca
             {showAxeFilter && (
               <div className="col-md-2">
                 <label className="form-label small fw-bold">Découpage PK</label>
-                <select className="form-select form-select-sm" value={decoupageFilter} onChange={(e) => setDecoupageFilter(e.target.value as any)}>
-                  <option value="">Tous</option>
-                  <option value="avec">Avec découpage</option>
-                  <option value="sans">Sans découpage</option>
-                </select>
+                <div className="d-flex align-items-center gap-2 mt-1">
+                  <div className="form-check form-switch mb-0">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      checked={decoupageFilter === 'avec'}
+                      onChange={(e) => setDecoupageFilter(e.target.checked ? 'avec' : '')}
+                    />
+                  </div>
+                  <span className="small text-muted">{decoupageFilter === 'avec' ? 'Actif' : 'Off'}</span>
+                </div>
               </div>
             )}
 
@@ -567,68 +768,540 @@ export default function AvancementView({ onNewMarche, canCreateMarche = true, ca
                 <div key={group.title} style={{ marginBottom: 18 }}>
                   <div className="district-header">
                     <span className="district-header__name">{group.title}</span>
-                    <div className="district-header__actions">
-                      <span className="district-header__count">{group.items.length}</span>
-                    </div>
+                    <div className="district-header__actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {isProgressOnlyManager && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => setIsEditMode(true)}
+                      >
+                        Nouveau relevé d'avancement
+                      </button>
+                    )}
+                    <span className="district-header__count">{group.items.length}</span>
                   </div>
+                </div>
                   {/* per-axis découpage header removed; PK shown in main table below */}
 
                   {/* per-market PK sub-table removed; PK column moved into main table */}
 
                   <div className="table-card">
                     <table className="table-fixed">
-                      <thead>
-                        <tr>
-                          <th rowSpan={2} style={{ width: 40, textAlign: 'center' }}>#</th>
-                          <th rowSpan={2}>Objet</th>
-                          {decoupageFilter === 'avec' && group.items.some((r) => r.pk_debut !== undefined && r.pk_fin !== undefined && r.pk_debut !== null && r.pk_fin !== null) && (
-                            <th rowSpan={2} style={{ width: 160, textAlign: 'center' }}>PK début → fin</th>
-                          )}
-                          <th rowSpan={2} className="text-center">MDC</th>
-                          <th rowSpan={2}>Titulaire</th>
-                          <th rowSpan={2}>Financement</th>
-                          <th colSpan={3} className="text-center">Avancement</th>
-                          <th rowSpan={2}>Situation</th>
-                          {isEditMode && canManageProgress && (
-                            <th rowSpan={2} className="text-center" style={{ width: 56 }}>Action</th>
-                          )}
-                        </tr>
-                        <tr>
-                          <th className="text-center small">Temporel</th>
-                          <th className="text-center small">Physique</th>
-                          <th className="text-center small">Financier</th>
-                          {isEditMode && canManageProgress && <th />}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.items.map((row, idx) => (
-                          <tr key={row.id} onClick={() => openModal('detail', row)} style={{ cursor: 'pointer' }}>
-                            <td className="text-center fw-bold">{idx + 1}</td>
-                            <td style={{ whiteSpace: 'normal' }}>{row.objet}</td>
-                            {decoupageFilter === 'avec' && row.pk_debut !== undefined && row.pk_fin !== undefined && row.pk_debut !== null && row.pk_fin !== null && (
-                              <td className="text-center small text-muted">{`${Number(row.pk_debut).toFixed(3)} → ${Number(row.pk_fin).toFixed(3)}`}</td>
-                            )}
-                            <td className="text-center"><span className="badge">{row.mdc}</span></td>
-                            <td>{row.titulaire}</td>
-                            <td>{row.financement}</td>
-                            <td style={{ textAlign: 'center' }}>{row.temporel}</td>
-                            <td style={{ textAlign: 'center' }}>{row.physique}</td>
-                            <td style={{ textAlign: 'center' }}>{row.financier}</td>
-                            <td>{row.situation}</td>
-                            {isEditMode && canManageProgress && (
-                              <td className="text-center">
-                                <RowActions
-                                  row={row}
-                                  canDelete={canManageProgress}
-                                  mode={canCreateMarche ? 'full' : 'avancement-only'}
-                                  onOpen={openModal}
-                                  onDelete={handleDelete}
-                                />
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
+                      {isProgressOnlyManager && isEditMode ? (
+                        <>
+                          <thead>
+                            <tr>
+                              <th rowSpan={2} style={{ width: columnWidths.index ?? 52, minWidth: 52, textAlign: 'center', position: 'relative' }}>
+                                #
+                                {resizeHandle('index')}
+                              </th>
+                              <th rowSpan={2} style={{ width: columnWidths.objet ?? 180, minWidth: 120, position: 'relative' }}>
+                                Objet
+                                {resizeHandle('objet')}
+                              </th>
+                              {decoupageFilter === 'avec' && group.items.some((r) => r.pk_debut !== undefined && r.pk_fin !== undefined && r.pk_debut !== null && r.pk_fin !== null) && (
+                                <th rowSpan={2} style={{ width: columnWidths.pk ?? 150, minWidth: 120, textAlign: 'center', position: 'relative' }}>
+                                  PK début → fin
+                                  {resizeHandle('pk')}
+                                </th>
+                              )}
+                              <th rowSpan={2} className="text-center" style={{ width: columnWidths.date ?? 130, minWidth: 120, position: 'relative' }}>
+                                Date
+                                {resizeHandle('date')}
+                              </th>
+                              <th rowSpan={2} className="text-center" style={{ width: columnWidths.observation ?? 320, minWidth: 260, position: 'relative' }}>
+                                Observation & Situation
+                                {resizeHandle('observation')}
+                              </th>
+                              <th colSpan={2} className="text-center" style={{ width: (columnWidths.physique ?? 110) + (columnWidths.financier ?? 110) + 12, minWidth: 220, position: 'relative' }}>
+                                Avancement
+                                {resizeHandle('physique')}
+                              </th>
+                              <th rowSpan={2} className="text-center" style={{ width: columnWidths.piecesJointes ?? 170, minWidth: 140, position: 'relative' }}>
+                                Pièces jointes
+                                {resizeHandle('piecesJointes')}
+                              </th>
+                              <th rowSpan={2} className="text-center" style={{ width: columnWidths.action ?? 150, minWidth: 120, position: 'relative' }}>
+                                Action
+                                {resizeHandle('action')}
+                              </th>
+                            </tr>
+                            <tr>
+                              <th className="text-center small" style={{ width: columnWidths.physique ?? 110, minWidth: 100, position: 'relative' }}>
+                                Physique
+                                {resizeHandle('physique')}
+                              </th>
+                              <th className="text-center small" style={{ width: columnWidths.financier ?? 110, minWidth: 100, position: 'relative' }}>
+                                Financier
+                                {resizeHandle('financier')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.items.map((row, idx) => {
+                              const market = marches.find((m) => String(m.id) === row.id)
+                              const latestAv = market?.dernier_avancement
+                              const initialDetail = latestAv?.detail_situation ?? ''
+                              const initialObs = latestAv?.observation ?? ''
+                              const currentDetail = draftDetailSituation[row.id] ?? initialDetail
+                              const currentObs = draftObservation[row.id] ?? initialObs
+                              const physVal = draftProgress[row.id]?.physique ?? (Number.parseFloat(row.physique.replace('%', '')) || 0)
+                              const finVal = draftProgress[row.id]?.financier ?? (Number.parseFloat(row.financier.replace('%', '')) || 0)
+
+                              return (
+                                <tr
+                                  key={row.id}
+                                  onClick={() => {
+                                    if (!(isProgressOnlyManager && isEditMode)) {
+                                      openModal('detail', row)
+                                    }
+                                  }}
+                                  style={{ cursor: isProgressOnlyManager && isEditMode ? 'default' : 'pointer' }}
+                                >
+                                  <td className="text-center fw-bold avancement-edit-cell">{idx + 1}</td>
+                                  <td className="avancement-edit-cell" style={{ whiteSpace: 'normal' }}>
+                                    <div className="fw-semibold text-break">{row.objet}</div>
+                                    <div className="small text-muted mt-1">{row.titulaire}</div>
+                                  </td>
+                                  {decoupageFilter === 'avec' && row.pk_debut !== undefined && row.pk_fin !== undefined && row.pk_debut !== null && row.pk_fin !== null && (
+                                    <td className="text-center small text-muted avancement-edit-cell">{`${Number(row.pk_debut).toFixed(3)} → ${Number(row.pk_fin).toFixed(3)}`}</td>
+                                  )}
+                                  <td onClick={(e) => e.stopPropagation()} className="avancement-edit-cell" style={{ width: columnWidths.date ?? 130, minWidth: 120 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                        <CalendarBlank size={13} weight="bold" />
+                                        Date
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={draftDate[row.id] ?? (latestAv?.date_avancement ?? new Date().toISOString().slice(0, 10))}
+                                        className="form-control form-control-sm"
+                                        style={{
+                                          borderRadius: 8,
+                                          background: 'rgba(15, 23, 42, 0.5)',
+                                          border: '1px solid var(--border)',
+                                          color: 'var(--text)',
+                                          fontSize: 12,
+                                          padding: '6px 8px',
+                                        }}
+                                        onChange={(e) => setDraftDate((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                                      />
+                                    </div>
+                                  </td>
+                                  <td onClick={(e) => e.stopPropagation()} className="avancement-edit-cell" style={{ width: columnWidths.observation ?? 320, minWidth: 260 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                      {/* Champ : Situation détaillée */}
+                                      <div className="avancement-textarea-box">
+                                        <div className="avancement-textarea-box__header">
+                                          <span className="avancement-textarea-box__label" style={{ color: '#93c5fd' }}>
+                                            <NotePencil size={13} weight="bold" />
+                                            Situation détaillée
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="avancement-textarea-box__expand-btn"
+                                            title="Agrandir en plein écran pour rédiger confortablement"
+                                            onClick={() => setExpandedTextModal({
+                                              row,
+                                              field: 'detail',
+                                              title: `Situation détaillée — ${row.objet}`,
+                                              value: currentDetail,
+                                            })}
+                                          >
+                                            <ArrowsOut size={12} weight="bold" />
+                                            <span>Agrandir</span>
+                                          </button>
+                                        </div>
+                                        <textarea
+                                          rows={2}
+                                          className="avancement-textarea-input"
+                                          value={currentDetail}
+                                          placeholder="Ex: Travaux en cours, terrassement achevé à 80%..."
+                                          onChange={(e) => setDraftDetailSituation((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                                        />
+                                      </div>
+
+                                      {/* Champ : Observation particulière */}
+                                      <div className="avancement-textarea-box">
+                                        <div className="avancement-textarea-box__header">
+                                          <span className="avancement-textarea-box__label" style={{ color: '#fcd34d' }}>
+                                            <ChatText size={13} weight="bold" />
+                                            Observation particulière
+                                          </span>
+                                          <button
+                                            type="button"
+                                            className="avancement-textarea-box__expand-btn"
+                                            title="Agrandir en plein écran pour rédiger confortablement"
+                                            onClick={() => setExpandedTextModal({
+                                              row,
+                                              field: 'obs',
+                                              title: `Observation particulière — ${row.objet}`,
+                                              value: currentObs,
+                                            })}
+                                          >
+                                            <ArrowsOut size={12} weight="bold" />
+                                            <span>Agrandir</span>
+                                          </button>
+                                        </div>
+                                        <textarea
+                                          rows={2}
+                                          className="avancement-textarea-input"
+                                          value={currentObs}
+                                          placeholder="Ex: Aléas météo, retards d'approvisionnement..."
+                                          onChange={(e) => setDraftObservation((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="avancement-edit-cell" style={{ textAlign: 'center', width: columnWidths.physique ?? 110, minWidth: 100 }} onClick={(e) => e.stopPropagation()}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)' }}>
+                                        Physique
+                                      </label>
+                                      <div className="avancement-percent-wrapper">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          step={0.1}
+                                          value={physVal}
+                                          className="avancement-percent-input"
+                                          disabled={Boolean(quickSavingIds[row.id])}
+                                          onChange={(e) => {
+                                            const raw = e.target.value
+                                            if (raw === '') {
+                                              setDraftProgress((prev) => ({
+                                                ...prev,
+                                                [row.id]: {
+                                                  physique: '',
+                                                  financier: prev[row.id]?.financier ?? (Number.parseFloat(row.financier.replace('%', '')) || 0),
+                                                },
+                                              }))
+                                              return
+                                            }
+                                            const val = Number(raw)
+                                            if (!Number.isNaN(val)) {
+                                              setDraftProgress((prev) => ({
+                                                ...prev,
+                                                [row.id]: {
+                                                  physique: val,
+                                                  financier: prev[row.id]?.financier ?? (Number.parseFloat(row.financier.replace('%', '')) || 0),
+                                                },
+                                              }))
+                                            }
+                                          }}
+                                        />
+                                        <span className="avancement-percent-suffix">%</span>
+                                      </div>
+                                      <div className="avancement-progress-mini">
+                                        <div
+                                          className="avancement-progress-mini__fill"
+                                          style={{
+                                            width: `${Math.min(100, Math.max(0, Number(physVal) || 0))}%`,
+                                            background: 'var(--primary)',
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="avancement-edit-cell" style={{ textAlign: 'center', width: columnWidths.financier ?? 110, minWidth: 100 }} onClick={(e) => e.stopPropagation()}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)' }}>
+                                        Financier
+                                      </label>
+                                      <div className="avancement-percent-wrapper">
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          step={0.1}
+                                          value={finVal}
+                                          className="avancement-percent-input"
+                                          disabled={Boolean(quickSavingIds[row.id])}
+                                          onChange={(e) => {
+                                            const raw = e.target.value
+                                            if (raw === '') {
+                                              setDraftProgress((prev) => ({
+                                                ...prev,
+                                                [row.id]: {
+                                                  physique: prev[row.id]?.physique ?? (Number.parseFloat(row.physique.replace('%', '')) || 0),
+                                                  financier: '',
+                                                },
+                                              }))
+                                              return
+                                            }
+                                            const val = Number(raw)
+                                            if (!Number.isNaN(val)) {
+                                              setDraftProgress((prev) => ({
+                                                ...prev,
+                                                [row.id]: {
+                                                  physique: prev[row.id]?.physique ?? (Number.parseFloat(row.physique.replace('%', '')) || 0),
+                                                  financier: val,
+                                                },
+                                              }))
+                                            }
+                                          }}
+                                        />
+                                        <span className="avancement-percent-suffix">%</span>
+                                      </div>
+                                      <div className="avancement-progress-mini">
+                                        <div
+                                          className="avancement-progress-mini__fill"
+                                          style={{
+                                            width: `${Math.min(100, Math.max(0, Number(finVal) || 0))}%`,
+                                            background: '#10b981',
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td onClick={(e) => e.stopPropagation()} className="avancement-edit-cell" style={{ width: columnWidths.piecesJointes ?? 170, minWidth: 140 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                      <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)' }}>
+                                        Pièces jointes
+                                      </label>
+                                      <label
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: 6,
+                                          width: '100%',
+                                          padding: '6px 10px',
+                                          borderRadius: 8,
+                                          border: '1px dashed var(--border)',
+                                          background: 'rgba(15, 23, 42, 0.4)',
+                                          color: 'var(--text)',
+                                          fontSize: 12,
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                          lineHeight: 1.2,
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--primary)' }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)' }}
+                                      >
+                                        <input
+                                          type="file"
+                                          multiple
+                                          style={{ display: 'none' }}
+                                          onChange={(e) => {
+                                            const files = Array.from(e.target.files ?? [])
+                                            setDraftFiles((prev) => ({ ...prev, [row.id]: [...(prev[row.id] ?? []), ...files] }))
+                                          }}
+                                        />
+                                        <Paperclip size={14} weight="bold" />
+                                        Joindre
+                                      </label>
+                                      {draftFiles[row.id]?.length ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 2 }}>
+                                          {draftFiles[row.id].map((f, fIdx) => (
+                                            <div
+                                              key={`${f.name}-${fIdx}`}
+                                              style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: 4,
+                                                background: 'rgba(15, 23, 42, 0.6)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: 6,
+                                                padding: '3px 6px',
+                                                fontSize: 11,
+                                              }}
+                                            >
+                                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 105, color: 'var(--text)' }} title={f.name}>
+                                                {f.name}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setDraftFiles((prev) => ({
+                                                    ...prev,
+                                                    [row.id]: (prev[row.id] ?? []).filter((_, idx2) => idx2 !== fIdx),
+                                                  }))
+                                                }}
+                                                style={{
+                                                  background: 'transparent',
+                                                  border: 'none',
+                                                  color: '#f87171',
+                                                  cursor: 'pointer',
+                                                  padding: 0,
+                                                  display: 'inline-flex',
+                                                  lineHeight: 1,
+                                                }}
+                                                title="Supprimer cette pièce jointe"
+                                              >
+                                                <X size={12} weight="bold" />
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', fontStyle: 'italic' }}>
+                                          Aucun fichier
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="text-center avancement-edit-cell" onClick={(e) => e.stopPropagation()} style={{ width: columnWidths.action ?? 150, minWidth: 120 }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 16 }}>
+                                      <button
+                                        type="button"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: 6,
+                                          background: 'var(--primary)',
+                                          color: 'var(--on-primary)',
+                                          border: '1px solid var(--primary)',
+                                          borderRadius: 8,
+                                          padding: '7px 12px',
+                                          fontSize: 12,
+                                          fontWeight: 700,
+                                          boxShadow: 'var(--shadow-sm)',
+                                          cursor: quickSavingIds[row.id] ? 'not-allowed' : 'pointer',
+                                          opacity: quickSavingIds[row.id] ? 0.7 : 1,
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        disabled={Boolean(quickSavingIds[row.id])}
+                                        onClick={async () => { await handleProgressValidation(row) }}
+                                      >
+                                        {quickSavingIds[row.id] ? (
+                                          <>
+                                            <SpinnerGap size={14} className="spin" aria-hidden="true" />
+                                            <span>...</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <CheckCircle size={14} weight="bold" />
+                                            <span>Valider</span>
+                                          </>
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: 4,
+                                          background: 'transparent',
+                                          color: 'var(--muted)',
+                                          border: '1px solid var(--border)',
+                                          borderRadius: 8,
+                                          padding: '6px 10px',
+                                          fontSize: 12,
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                          transition: 'all 0.15s ease',
+                                        }}
+                                        onClick={handleCancelProgressMode}
+                                      >
+                                        <X size={13} />
+                                        <span>Annuler</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </>
+                      ) : (
+                        <>
+                          <thead>
+                            <tr>
+                              <th rowSpan={2} style={{ width: columnWidths.index ?? 52, minWidth: 52, textAlign: 'center', position: 'relative' }}>
+                                #
+                                {resizeHandle('index')}
+                              </th>
+                              <th rowSpan={2} style={{ width: columnWidths.objet ?? 180, minWidth: 120, position: 'relative' }}>
+                                Objet
+                                {resizeHandle('objet')}
+                              </th>
+                              {decoupageFilter === 'avec' && group.items.some((r) => r.pk_debut !== undefined && r.pk_fin !== undefined && r.pk_debut !== null && r.pk_fin !== null) && (
+                                <th rowSpan={2} style={{ width: columnWidths.pk ?? 150, minWidth: 120, textAlign: 'center', position: 'relative' }}>
+                                  PK début → fin
+                                  {resizeHandle('pk')}
+                                </th>
+                              )}
+                              <th rowSpan={2} className="text-center" style={{ width: columnWidths.mdc ?? 110, minWidth: 90, position: 'relative' }}>
+                                MDC
+                                {resizeHandle('mdc')}
+                              </th>
+                              <th rowSpan={2} style={{ width: columnWidths.titulaire ?? 170, minWidth: 120, position: 'relative' }}>
+                                Titulaire
+                                {resizeHandle('titulaire')}
+                              </th>
+                              <th rowSpan={2} style={{ width: columnWidths.financement ?? 130, minWidth: 100, position: 'relative' }}>
+                                Financement
+                                {resizeHandle('financement')}
+                              </th>
+                              {showTemporalColumn && (
+                                <th rowSpan={2} className="text-center small" style={{ width: columnWidths.temporel ?? 120, minWidth: 100, position: 'relative' }}>
+                                  Temporel
+                                  {resizeHandle('temporel')}
+                                </th>
+                              )}
+                              <th colSpan={2} className="text-center" style={{ width: (columnWidths.physique ?? 120) + (columnWidths.financier ?? 120) + 12, minWidth: 220, position: 'relative' }}>
+                                Avancement
+                                {resizeHandle('physique')}
+                              </th>
+                              <th rowSpan={2} style={{ width: columnWidths.situation ?? 120, minWidth: 110, position: 'relative' }}>
+                                Situation
+                                {resizeHandle('situation')}
+                              </th>
+                              {!isProgressOnlyManager && isEditMode && canManageProgress && (
+                                <th rowSpan={2} className="text-center" style={{ width: columnWidths.action ?? 160, minWidth: 100, position: 'relative' }}>
+                                  Action
+                                  {resizeHandle('action')}
+                                </th>
+                              )}
+                            </tr>
+                            <tr>
+                              <th className="text-center small" style={{ width: columnWidths.physique ?? 120, minWidth: 100, position: 'relative' }}>
+                                Physique
+                                {resizeHandle('physique')}
+                              </th>
+                              <th className="text-center small" style={{ width: columnWidths.financier ?? 120, minWidth: 100, position: 'relative' }}>
+                                Financier
+                                {resizeHandle('financier')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.items.map((row, idx) => (
+                              <tr key={row.id} onClick={() => openModal('detail', row)} style={{ cursor: 'pointer' }}>
+                                <td className="text-center fw-bold">{idx + 1}</td>
+                                <td style={{ whiteSpace: 'normal' }}>{row.objet}</td>
+                                {decoupageFilter === 'avec' && row.pk_debut !== undefined && row.pk_fin !== undefined && row.pk_debut !== null && row.pk_fin !== null && (
+                                  <td className="text-center small text-muted">{`${Number(row.pk_debut).toFixed(3)} → ${Number(row.pk_fin).toFixed(3)}`}</td>
+                                )}
+                                <td className="text-center"><span className="badge">{row.mdc}</span></td>
+                                <td>{row.titulaire}</td>
+                                <td>{row.financement}</td>
+                                {showTemporalColumn && <td style={{ textAlign: 'center' }}>{row.temporel}</td>}
+                                <td style={{ textAlign: 'center' }}>{row.physique}</td>
+                                <td style={{ textAlign: 'center' }}>{row.financier}</td>
+                                <td>{row.situation}</td>
+                                {!isProgressOnlyManager && isEditMode && canManageProgress && (
+                                  <td className="text-center">
+                                    <RowActions
+                                      row={row}
+                                      canDelete={canManageProgress}
+                                      mode={canCreateMarche ? 'full' : 'avancement-only'}
+                                      onOpen={openModal}
+                                      onDelete={handleDelete}
+                                    />
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </>
+                      )}
                     </table>
                   </div>
                 </div>
@@ -636,6 +1309,127 @@ export default function AvancementView({ onNewMarche, canCreateMarche = true, ca
             )}
           </div>
       </div>
+
+      {/* ─── Modale Plein Écran de Rédaction du Texte ─── */}
+      {expandedTextModal && (
+        <div
+          className="marche-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            className="marche-modal-backdrop"
+            onClick={() => setExpandedTextModal(null)}
+            style={{ position: 'absolute', inset: 0, background: 'var(--scrim)' }}
+          />
+          <div
+            className="marche-modal"
+            style={{
+              position: 'relative',
+              width: 'min(640px, 94%)',
+              background: 'var(--panel)',
+              borderRadius: 16,
+              border: '1px solid var(--border)',
+              boxShadow: '0 24px 48px rgba(0, 0, 0, 0.4)',
+              zIndex: 81,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '14px 18px',
+                borderBottom: '1px solid var(--border)',
+                background: 'var(--panel-soft)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {expandedTextModal.field === 'detail' ? (
+                  <NotePencil size={18} weight="bold" style={{ color: '#93c5fd' }} />
+                ) : (
+                  <ChatText size={18} weight="bold" style={{ color: '#fcd34d' }} />
+                )}
+                <h5 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700 }}>
+                  {expandedTextModal.title}
+                </h5>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setExpandedTextModal(null)}
+                style={{ padding: '4px 8px' }}
+                aria-label="Fermer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: 18 }}>
+              <label style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, display: 'block' }}>
+                {expandedTextModal.field === 'detail'
+                  ? 'Rédigez la situation détaillée de ce marché :'
+                  : 'Rédigez vos observations particulières sur ce marché :'}
+              </label>
+              <textarea
+                autoFocus
+                rows={8}
+                value={expandedTextModal.value}
+                onChange={(e) => setExpandedTextModal((prev) => prev ? { ...prev, value: e.target.value } : null)}
+                style={{
+                  width: '100%',
+                  borderRadius: 10,
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                  fontSize: 13,
+                  lineHeight: 1.55,
+                  padding: '12px 14px',
+                  outline: 'none',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+                placeholder="Saisissez votre texte ici..."
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                  {expandedTextModal.value.length} caractère(s)
+                </span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setExpandedTextModal(null)}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      if (expandedTextModal.field === 'detail') {
+                        setDraftDetailSituation((prev) => ({ ...prev, [expandedTextModal.row.id]: expandedTextModal.value }))
+                      } else {
+                        setDraftObservation((prev) => ({ ...prev, [expandedTextModal.row.id]: expandedTextModal.value }))
+                      }
+                      setExpandedTextModal(null)
+                    }}
+                  >
+                    Appliquer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Modals ─── */}
       {activeModal && selectedRow && (

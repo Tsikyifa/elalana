@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { CalendarBlank, CurrencyCircleDollar, MagnifyingGlass, MapPin, Stack } from '@phosphor-icons/react'
 import type { PpmRow } from '../../ppm/types'
 import type { MarcheItem } from '../../../../types/travaux'
 import { updateMarche } from '../../../../api/travaux.api'
+import { fetchCurrentUser, fetchUserManagement } from '../../../../api/users.api'
 
 type EditMarcheModalProps = {
   market: PpmRow
@@ -9,6 +11,31 @@ type EditMarcheModalProps = {
 }
 
 export default function EditMarcheModal({ market, onClose }: EditMarcheModalProps) {
+  const [projectManagers, setProjectManagers] = useState<Array<{ id: number; username: string; first_name?: string; last_name?: string }>>([])
+  const [selectedProjectManager, setSelectedProjectManager] = useState('')
+  const [isAdminUser, setIsAdminUser] = useState(false)
+
+  useEffect(() => {
+    void Promise.all([fetchCurrentUser(), fetchUserManagement()])
+      .then(([currentUser, usersResponse]) => {
+        const adminRole = currentUser.user.is_superuser || currentUser.user.roles.includes('admin')
+        setIsAdminUser(adminRole)
+
+        const managers = usersResponse.users
+          .filter((user) => user.roles.includes('chef_de_projet'))
+          .sort((a, b) => a.username.localeCompare(b.username))
+
+        setProjectManagers(managers)
+        if (adminRole && managers.length > 0 && !selectedProjectManager) {
+          setSelectedProjectManager(String(managers[0].id))
+        }
+      })
+      .catch(() => {
+        setProjectManagers([])
+        setIsAdminUser(false)
+      })
+  }, [selectedProjectManager])
+
   return (
     <form className="panel-body marche-form" onSubmit={async (e) => {
       e.preventDefault();
@@ -20,7 +47,7 @@ export default function EditMarcheModal({ market, onClose }: EditMarcheModalProp
 
         // Collect form data
         // Prepare data for Marche update - collect values from form fields
-const marcheData: Partial<MarcheItem> = {
+const marcheData: Partial<MarcheItem> & { chef_de_projet?: number } = {
           // Description: from either objet or description field (map to MarcheItem.description)
           description: (document.getElementById('ppm-objet') as HTMLInputElement)?.value
                       ?? (document.getElementById('ppm-description') as HTMLTextAreaElement)?.value
@@ -74,6 +101,7 @@ const marcheData: Partial<MarcheItem> = {
           // Marché anticipé checkbox (maps to MarcheItem.est_anticipe)
           est_anticipe: (document.getElementById('est-anticipe-modal') as HTMLInputElement)?.checked
                   ?? false,
+          chef_de_projet: isAdminUser && selectedProjectManager ? Number(selectedProjectManager) : undefined,
         };
 
         // Remove undefined values so PATCH only sends fields that were explicitly set
@@ -135,6 +163,30 @@ const marcheData: Partial<MarcheItem> = {
             </select>
           </div>
         </div>
+
+        {isAdminUser && (
+          <div className="col-md-4">
+            <label className="form-label fw-bold small" htmlFor="ppm-chef-projet">CHEF DE PROJET À AFFECTER</label>
+            <div className="input-group marche-input-group">
+              <span className="input-group-text">
+                <Stack size={16} weight="bold" aria-hidden="true" />
+              </span>
+              <select
+                id="ppm-chef-projet"
+                className="filter-select"
+                value={selectedProjectManager}
+                onChange={(e) => setSelectedProjectManager(e.target.value)}
+              >
+                <option value="">-- Choisir un chef de projet --</option>
+                {projectManagers.map((manager) => (
+                  <option key={manager.id} value={String(manager.id)}>
+                    {manager.first_name || manager.username} {manager.last_name || ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         <div className="col-md-4">
           <label className="form-label fw-bold small" htmlFor="ppm-objet">OBJET / RÉSUMÉ</label>

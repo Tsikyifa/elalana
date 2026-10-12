@@ -42,6 +42,10 @@ export function fetchAxes(decoupage?: 'avec' | 'sans' | '') {
   return apiGet<AxeOption[]>(`/travaux/axes/${qs}`)
 }
 
+export function fetchAxe(id: string | number) {
+  return apiGet<AxeOption>(`/travaux/axes/${id}/`)
+}
+
 export function createBac(payload: Record<string, unknown>, image?: File | null) {
   const cleaned = Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== '' && value !== undefined && value !== null),
@@ -141,18 +145,26 @@ export function deleteMarche(id: string) {
 // ==========================================
 // AVANCEMENTS & ORDRES DE SERVICE (OS)
 // ==========================================
-export function createAvancement(payload: Partial<AvancementItem>, file?: File | null, legend?: string) {
+export function createAvancement(payload: Partial<AvancementItem>, file?: File | null, legend?: string, files?: File[]) {
   const cleaned = Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== '' && value !== undefined && value !== null),
   )
 
-  if (file) {
+  const filesToUpload = files && files.length > 0 ? files : file ? [file] : []
+
+  if (filesToUpload.length > 0) {
     const form = new FormData()
     for (const [key, value] of Object.entries(cleaned)) {
       form.append(key, String(value))
     }
-    if (legend) form.append('legend', legend)
-    form.append('file', file)
+    if (legend) {
+      form.append('legende', legend)
+      form.append('legend', legend)
+    }
+    for (const currentFile of filesToUpload) {
+      form.append('fichier', currentFile)
+      form.append('file', currentFile)
+    }
     return apiPostForm<AvancementItem>('/travaux/avancements/', form)
   }
 

@@ -19,7 +19,54 @@ export type { AppPage } from './routes/hashRoute'
 
 const AUTH_STORAGE_KEY = 'app-auth-state'
 
-/** `checking` tant que la session n'a pas été validée : on ne sait pas encore quoi afficher. */
+/** Noms des cookies d'authentification (nouveaux + anciens pour purge). */
+const AUTH_COOKIE_NAMES = [
+  'access_v2',
+  'sessionid_v2',
+  'access',
+  'sessionid',
+]
+
+function debugAuth(message: string, payload?: Record<string, unknown>) {
+  // Logs de diagnostic : retirer la condition DEV le temps du debug.
+  console.debug(`[auth] ${message}`, payload ?? {})
+}
+
+function clearAuthCookies() {
+  const hostname = window.location.hostname
+  const candidateDomains = Array.from(
+    new Set(
+      [
+        undefined,
+        hostname,
+        hostname.startsWith('.') ? hostname : `.${hostname}`,
+        hostname.endsWith('.elalana.mg') ? '.elalana.mg' : undefined,
+        hostname.endsWith('.elalana.mg') ? 'back.elalana.mg' : undefined,
+        hostname.endsWith('.elalana.mg') ? 'dev.elalana.mg' : undefined,
+        hostname.endsWith('.elalana.mg') ? 'elalana.mg' : undefined,
+      ].filter((value): value is string | undefined => Boolean(value)),
+    ),
+  )
+
+  for (const cookieName of AUTH_COOKIE_NAMES) {
+    for (const domain of candidateDomains) {
+      const variants = [
+        domain
+          ? `${cookieName}=; Max-Age=0; path=/; domain=${domain}; SameSite=Lax`
+          : `${cookieName}=; Max-Age=0; path=/; SameSite=Lax`,
+        domain
+          ? `${cookieName}=; Max-Age=0; path=/; domain=${domain}; SameSite=None; Secure`
+          : `${cookieName}=; Max-Age=0; path=/; SameSite=None; Secure`,
+      ]
+      for (const cookie of variants) {
+        document.cookie = cookie
+      }
+    }
+  }
+
+  debugAuth('clearAuthCookies', { hostname, cookies: document.cookie })
+}
+
 type Session = 'checking' | 'authenticated' | 'anonymous'
 
 type AppUser = {
@@ -34,15 +81,13 @@ type AppUser = {
 }
 
 function App() {
-  // La page courante vient de l'URL : un rafraîchissement ne la perd plus.
   const [route, setRoute] = useState<Route>(readRoute)
   const [session, setSession] = useState<Session>('checking')
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null)
 
-  // Page visée avant la redirection vers la connexion, pour y revenir après login.
+  const authRequestIdRef = useRef(0)
   const pendingRoute = useRef<Route | null>(null)
 
-  // Précédent/suivant du navigateur, et liens directs (#/travaux).
   useEffect(() => {
     const syncFromHash = () => setRoute(readRoute())
     window.addEventListener('hashchange', syncFromHash)
@@ -51,7 +96,6 @@ function App() {
 
   const navigate = useCallback((next: Route) => {
     const hash = buildHash(next)
-    // Poser le même hash ne déclenche pas `hashchange` : rien à faire.
     if (window.location.hash === hash) return
     window.location.hash = hash
   }, [])
@@ -61,14 +105,19 @@ function App() {
     [navigate],
   )
 
-  // Verify session on mount so a page refresh keeps the user logged in.
-  // The persisted auth flag is a safety net: if the user explicitly logged out,
-  // a refresh must not restore the dashboard from a stale cookie.
+  /**
+   * Vérification initiale de la session au montage.
+   * Ne PAS réinitialiser currentUser si la session est déjà valide :
+   * sinon on perd l'utilisateur précédemment chargé pendant le refresh.
+   */
   useEffect(() => {
     let mounted = true
 
     async function checkSession() {
+      const requestId = ++authRequestIdRef.current
       const storedState = window.localStorage.getItem(AUTH_STORAGE_KEY)
+
+      debugAuth('checkSession start', { requestId, storedState })
 
       if (storedState === 'anonymous') {
         if (mounted) setSession('anonymous')
@@ -80,25 +129,30 @@ function App() {
           method: 'GET',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
         })
 
-        if (!mounted) return
+        if (!mounted || requestId !== authRequestIdRef.current) return
 
         if (res.ok) {
-          const data = await res.json() as { user?: AppUser; can_manage_users?: boolean }
+          const data = (await res.json()) as { user?: AppUser }
           const user = data.user ?? null
-          setCurrentUser(user ?? null)
+          debugAuth('checkSession success', { user })
+          setCurrentUser(user)
           window.localStorage.setItem(AUTH_STORAGE_KEY, 'authenticated')
           setSession('authenticated')
           return
         }
 
+        debugAuth('checkSession 401', { status: res.status })
         window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
         setCurrentUser(null)
         setSession('anonymous')
-      } catch {
-        // Réseau injoignable : on traite comme une session absente.
-        if (mounted) {
+      } catch (error) {
+        debugAuth('checkSession error', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        if (mounted && requestId === authRequestIdRef.current) {
           window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
           setCurrentUser(null)
           setSession('anonymous')
@@ -110,13 +164,14 @@ function App() {
 
     return () => {
       mounted = false
+      authRequestIdRef.current += 1
     }
   }, [])
 
   /**
-   * L'URL est la source de vérité, mais elle ne connaît pas la session : c'est ici
-   * qu'on les réconcilie. Sans ce garde-fou, un anonyme sur `#/travaux` voyait la
-   * page s'afficher, et un connecté sur `#/login` restait bloqué sur le formulaire.
+   * Réconciliation session/route.
+   * - Anonyme hors login → redirection login
+   * - Authentifié sur login → retour à la page par défaut ou route en attente
    */
   useEffect(() => {
     if (session === 'checking') return
@@ -137,42 +192,81 @@ function App() {
   }, [session, route, navigate])
 
   const handleLogout = useCallback(async () => {
-    try {
-      await logout()
-    } catch {
-      // Session déjà invalide côté serveur : le cookie est de toute façon abandonné.
-    }
+    authRequestIdRef.current += 1
 
-    document.cookie = 'access=; Max-Age=0; path=/; SameSite=Lax'
-    window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
+    // 1. Vider d'abord l'état client, AVANT l'appel réseau :
+    //    empêche tout rendu transitoire avec l'ancien utilisateur.
     setCurrentUser(null)
     setSession('anonymous')
+    window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
+    window.sessionStorage.clear()
+    clearAuthCookies()
+    pendingRoute.current = null
+
+    // 2. Rediriger immédiatement vers login
     navigate({ page: LOGIN_PAGE, tab: null })
+
+    // 3. Appeler le backend (sans bloquer le rendu)
+    try {
+      await logout()
+    } catch (error) {
+      debugAuth('logout backend error', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }, [navigate])
 
+  // Redirection des chefs de projet vers leur dashboard
   useEffect(() => {
     if (!currentUser) return
-
     const isProjectManager = currentUser.roles.includes('chef_de_projet')
-    if (isProjectManager && !['dashboard', 'travaux', 'cartographie'].includes(route.page)) {
+    if (
+      isProjectManager &&
+      !['dashboard', 'travaux', 'cartographie'].includes(route.page)
+    ) {
       navigate({ page: 'dashboard', tab: null })
     }
   }, [currentUser, route.page, navigate])
 
-  // while checking authentication, render nothing to avoid flashing login
   if (session === 'checking') return null
 
   if (session === 'anonymous' || route.page === LOGIN_PAGE) {
-    return <Login onLogin={async () => {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, 'authenticated')
-      try {
-        const data = await fetchCurrentUser()
-        setCurrentUser(data.user ?? null)
-      } catch {
-        setCurrentUser(null)
-      }
-      setSession('authenticated')
-    }} />
+    return (
+      <Login
+        onLogin={async () => {
+          // Le POST /auth/login/ a déjà été fait par Login.tsx.
+          // On nettoie l'ancien état et on recharge le nouveau user.
+          const requestId = ++authRequestIdRef.current
+
+          debugAuth('onLogin start', { requestId })
+
+          // Reset du state AVANT fetch, pour éviter tout rendu transitoire.
+          setCurrentUser(null)
+          setSession('checking')
+          window.localStorage.setItem(AUTH_STORAGE_KEY, 'authenticated')
+
+          try {
+            const data = await fetchCurrentUser()
+            if (requestId !== authRequestIdRef.current) {
+              debugAuth('onLogin stale response ignored', { requestId })
+              return
+            }
+            const user = data.user ?? null
+            debugAuth('onLogin /auth/me/ success', { user })
+            setCurrentUser(user)
+            setSession('authenticated')
+          } catch (error) {
+            debugAuth('onLogin /auth/me/ error', {
+              error: error instanceof Error ? error.message : String(error),
+            })
+            if (requestId !== authRequestIdRef.current) return
+            window.localStorage.setItem(AUTH_STORAGE_KEY, 'anonymous')
+            setCurrentUser(null)
+            setSession('anonymous')
+          }
+        }}
+      />
+    )
   }
 
   return (
@@ -180,11 +274,23 @@ function App() {
       activePage={route.page}
       onPageChange={handlePageChange}
       onLogout={handleLogout}
-      canManageUsers={Boolean(currentUser?.is_superuser || currentUser?.roles.includes('admin'))}
+      canManageUsers={Boolean(
+        currentUser?.is_superuser || currentUser?.roles.includes('admin'),
+      )}
       userRoles={currentUser?.roles ?? []}
-      userDisplayName={currentUser ? [currentUser.first_name, currentUser.last_name].filter(Boolean).join(' ') || currentUser.username : 'Utilisateur'}
+      userDisplayName={
+        currentUser
+          ? [currentUser.first_name, currentUser.last_name]
+              .filter(Boolean)
+              .join(' ') || currentUser.username
+          : 'Utilisateur'
+      }
     >
-      <AppRoutes route={route} onNavigate={navigate} userRoles={currentUser?.roles ?? []} />
+      <AppRoutes
+        route={route}
+        onNavigate={navigate}
+        userRoles={currentUser?.roles ?? []}
+      />
     </Layout>
   )
 }

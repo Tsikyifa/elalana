@@ -3,16 +3,18 @@ import {
   AnchorSimple,
   ArrowClockwise,
   ArrowDownRight,
+  ArrowRight,
   ArrowUpRight,
   ArrowsClockwise,
   ChartBar,
   CheckCircle,
   Clock,
   GridFour,
+  MagnifyingGlass,
   MapPin,
   Wallet,
+  WarningCircle,
 } from '@phosphor-icons/react'
-import { fetchCurrentUser } from '../../api/users.api'
 import { fetchDashboardStats, fetchMarches } from '../../api/travaux.api'
 import type { DashboardStatsResponse, MarcheItem } from '../../types/travaux'
 
@@ -59,14 +61,21 @@ const renderActionState = (message: string, canCreate = true) => (
   </div>
 )
 
-export function Dashboard() {
+type DashboardProps = {
+  userRoles?: string[]
+}
+
+export function Dashboard({ userRoles = [] }: DashboardProps) {
   const [stats, setStats] = useState<DashboardStatsResponse | null>(null)
   const [assignedProjects, setAssignedProjects] = useState<MarcheItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isProjectManager, setIsProjectManager] = useState(false)
-  const [isReadOnlyUser, setIsReadOnlyUser] = useState(false)
   const [period, setPeriod] = useState<PeriodFilter>('annee')
+  const [pmFilter, setPmFilter] = useState<'all' | 'delayed' | 'ontime'>('all')
+  const [pmSearch, setPmSearch] = useState('')
+
+  const isProjectManager = userRoles.includes('chef_de_projet')
+  const isReadOnlyUser = userRoles.some((role) => ['visiteur', 'ministre', 'viewer', 'audience_ministre'].includes(role))
 
   const loadStats = async (nextPeriod: PeriodFilter = period) => {
     setLoading(true)
@@ -82,28 +91,13 @@ export function Dashboard() {
   }
 
   useEffect(() => {
-    void fetchCurrentUser()
-      .then((response) => {
-        const roles = response.user.roles ?? []
-        const isManager = roles.includes('chef_de_projet')
-        const readOnly = roles.some((role) => ['visiteur', 'ministre', 'viewer', 'audience_ministre'].includes(role))
-
-        setIsProjectManager(isManager)
-        setIsReadOnlyUser(readOnly)
-
-        if (isManager) {
-          void fetchMarches().then((projects) => {
-            setAssignedProjects(projects)
-          }).catch(() => setAssignedProjects([]))
-        } else {
-          setAssignedProjects([])
-        }
-      })
-      .catch(() => {
-        setIsProjectManager(false)
-        setIsReadOnlyUser(false)
-        setAssignedProjects([])
-      })
+    if (isProjectManager) {
+      void fetchMarches()
+        .then((projects) => setAssignedProjects(projects))
+        .catch(() => setAssignedProjects([]))
+    } else {
+      setAssignedProjects([])
+    }
 
     void loadStats(period)
 
@@ -130,7 +124,7 @@ export function Dashboard() {
         window.removeEventListener('marche:deleted', handleRefresh)
       }
     }
-  }, [])
+  }, [isProjectManager, period])
 
   useEffect(() => {
     void loadStats(period)
@@ -140,11 +134,12 @@ export function Dashboard() {
   const alerts = stats?.alerts ?? []
   const aucProgress = stats?.auc_stats.progression_pct ?? 0
   const totalMarchesPermanentes = recapFinancement.find((row) => row.type === 'TOTAL GLOBAL')?.total ?? 0
+  const budgetBreakdown = stats?.summary_cards?.budget_breakdown ?? { travaux: 0, bac: 0, convention: 0 }
 
   const summaryCards = isProjectManager
     ? [
         {
-          label: 'Budget engagé',
+          label: 'Budget alloué (marchés)',
           value: stats ? formatCurrency(stats.summary_cards.budget_engage) : '—',
           tone: 'primary',
           icon: Wallet,
@@ -155,8 +150,8 @@ export function Dashboard() {
           label: 'Marchés assignés',
           value: stats ? String(totalMarchesPermanentes) : '—',
           tone: 'warning',
-          icon: Wallet,
-          trend: stats ? `${totalMarchesPermanentes} marchés` : 'Chargement…',
+          icon: GridFour,
+          trend: stats ? `${totalMarchesPermanentes} dans mon périmètre` : 'Chargement…',
           trendDirection: 'up' as const,
         },
         {
@@ -174,11 +169,11 @@ export function Dashboard() {
           trendDirection: (stats?.summary_cards.avancement_physique ?? 0) >= 50 ? ('up' as const) : ('down' as const),
         },
         {
-          label: 'Retards',
+          label: 'Marchés en retard',
           value: stats ? String(stats.summary_cards.marches_en_retard) : '—',
           tone: 'danger',
           icon: Clock,
-          trend: stats?.summary_cards.marches_en_retard ? 'Action req.' : 'OK',
+          trend: (stats?.summary_cards.marches_en_retard ?? 0) > 0 ? 'Action req.' : 'À jour',
           trendDirection: (stats?.summary_cards.marches_en_retard ?? 0) > 0 ? ('down' as const) : ('up' as const),
         },
       ]
@@ -306,11 +301,6 @@ export function Dashboard() {
         <div className="stats-card stats-card-main">
           <div className="stats-card-header">
             <span className="stats-card-label">{summaryCards[0].label}</span>
-            <span className="stats-trend-badge">
-              <span className="trend-dot" style={{ backgroundColor: getTrendColor('primary') }}></span>
-              {summaryCards[0].trendDirection === 'up' ? <ArrowUpRight size={10} className="trend-arrow" /> : <ArrowDownRight size={10} className="trend-arrow" />}
-              <span className="trend-text">{summaryCards[0].trend}</span>
-            </span>
           </div>
           <div className="stats-card-value">
             <strong>{summaryCards[0].value}</strong>
@@ -324,63 +314,71 @@ export function Dashboard() {
                   <stop offset="100%" stopColor="rgba(59,130,246,0)" />
                 </linearGradient>
               </defs>
-              {/* Area path: simplified sample curve; preserves accessibility by being decorative */}
               <path d="M0,28 C15,20 30,16 45,18 C60,20 75,16 90,12 L95,11 L100,10 L100,36 L0,36 Z" fill="url(#budgetGradient)" stroke="none" />
               <path d="M0,28 C15,20 30,16 45,18 C60,20 75,16 90,12 L95,11" fill="none" stroke="rgba(59,130,246,0.95)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               <circle cx="95" cy="11" r="3" fill="rgba(59,130,246,0.95)" />
             </svg>
           </div>
+
+          {!isProjectManager ? (
+            <div className="budget-breakdown" aria-label="Répartition du budget engagé">
+              {[
+                { label: 'Travaux', value: budgetBreakdown.travaux },
+                { label: 'Bac', value: budgetBreakdown.bac },
+                { label: 'Convention', value: budgetBreakdown.convention },
+              ].map((item) => (
+                <div key={item.label} className="budget-breakdown__item">
+                  <span>{item.label}</span>
+                  <strong>{formatCurrency(item.value)}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="budget-breakdown" aria-label="Détail des marchés assignés">
+              <div className="budget-breakdown__item">
+                <span>Marchés assignés</span>
+                <strong>{totalMarchesPermanentes}</strong>
+              </div>
+              <div className="budget-breakdown__item">
+                <span>Budget moyen / marché</span>
+                <strong>{totalMarchesPermanentes > 0 && stats ? formatCurrency(stats.summary_cards.budget_engage / totalMarchesPermanentes) : '—'}</strong>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right group: asymmetric layout */}
         <div className="stats-right">
           <div className="stats-right-top">
             <div className="stats-card stats-card-right-large">
-          <div className="stats-card-header">
-            <span className="stats-cell-label">{summaryCards[1].label}</span>
-            <span className="stats-trend-badge">
-              <span className="trend-dot" style={{ backgroundColor: getTrendColor('success') }}></span>
-              {summaryCards[1].trendDirection === 'up' ? <ArrowUpRight size={10} className="trend-arrow" /> : <ArrowDownRight size={10} className="trend-arrow" />}
-              <span className="trend-text">{summaryCards[1].trend}</span>
-            </span>
-          </div>
-          <div className="stats-card-value">
-            <strong>{summaryCards[1].value}</strong>
-          </div>
-          </div>
-
-          <div className="stats-card stats-card-right-small">
-          <div className="stats-card-header">
-            <span className="stats-cell-label">{summaryCards[2].label}</span>
-            <span className="stats-trend-badge">
-              <span className="trend-dot" style={{ backgroundColor: getTrendColor('danger') }}></span>
-              {summaryCards[2].trendDirection === 'up' ? <ArrowUpRight size={10} className="trend-arrow" /> : <ArrowDownRight size={10} className="trend-arrow" />}
-              <span className="trend-text">{summaryCards[2].trend}</span>
-            </span>
-          </div>
-          <div className="stats-card-value">
-            <strong>{summaryCards[2].value}</strong>
-          </div>
-            </div>
-          </div>
-
-          {!isProjectManager && (
-            <div className="stats-right-bottom">
-              <div className="stats-card stats-card-right-wide compact">
-            <div className="stats-card-header">
-              <span className="stats-cell-label">{summaryCards[3].label}</span>
-              <span className="stats-trend-badge">
-                <span className="trend-dot" style={{ backgroundColor: getTrendColor('warning') }}></span>
-                {summaryCards[3].trendDirection === 'up' ? <ArrowUpRight size={10} className="trend-arrow" /> : <ArrowDownRight size={10} className="trend-arrow" />}
-                <span className="trend-text">{summaryCards[3].trend}</span>
-              </span>
-            </div>
-            <div className="stats-card-value">
-              <strong>{summaryCards[3].value}</strong>
-            </div>
+              <div className="stats-card-header">
+                <span className="stats-cell-label">{summaryCards[1].label}</span>
+              </div>
+              <div className="stats-card-value">
+                <strong>{summaryCards[1].value}</strong>
               </div>
             </div>
-          )}
+
+            <div className="stats-card stats-card-right-small">
+              <div className="stats-card-header">
+                <span className="stats-cell-label">{summaryCards[2].label}</span>
+              </div>
+              <div className="stats-card-value">
+                <strong>{summaryCards[2].value}</strong>
+              </div>
+            </div>
+          </div>
+
+          <div className="stats-right-bottom">
+            <div className="stats-card stats-card-right-wide compact">
+              <div className="stats-card-header">
+                <span className="stats-cell-label">{summaryCards[3].label}</span>
+              </div>
+              <div className="stats-card-value">
+                <strong>{summaryCards[3].value}</strong>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -440,147 +438,293 @@ export function Dashboard() {
 
       {isProjectManager && (() => {
         const delayedProjects = assignedProjects.filter((project) => Boolean(project.dernier_avancement?.est_en_retard))
-        const regionBreakdown = Array.from(new Set(assignedProjects.map((project) => project.region).filter(Boolean))).slice(0, 4).map((region) => ({
-          label: region || 'Région',
-          value: assignedProjects.filter((project) => project.region === region).length,
-        }))
-        const axisProgress = assignedProjects.slice(0, 4).map((project) => ({
-          label: project.axe_detail?.designation || project.resume || 'Projet',
-          value: Number(project.dernier_avancement?.avancement_physique ?? 0),
-        }))
-        const nearDeadlineProjects = assignedProjects
-          .filter((project) => project.date_fin_actualisee)
-          .slice(0, 3)
+        const onTimeProjects = assignedProjects.filter((project) => !project.dernier_avancement?.est_en_retard)
+
+        const filteredProjects = assignedProjects.filter((project) => {
+          const isDelayed = Boolean(project.dernier_avancement?.est_en_retard)
+          if (pmFilter === 'delayed' && !isDelayed) return false
+          if (pmFilter === 'ontime' && isDelayed) return false
+
+          if (pmSearch.trim()) {
+            const q = pmSearch.toLowerCase().trim()
+            const name = (project.resume || project.description || '').toLowerCase()
+            const num = (project.num_marche || '').toLowerCase()
+            const axe = (project.axe_detail?.designation || '').toLowerCase()
+            const region = (project.region || '').toLowerCase()
+            const titulaire = (project.titulaire || '').toLowerCase()
+            return name.includes(q) || num.includes(q) || axe.includes(q) || region.includes(q) || titulaire.includes(q)
+          }
+          return true
+        })
 
         return (
-          <>
-            <div className="panel-grid dashboard-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-              <div className="panel">
-                <div className="panel-header">
-                  <div className="panel-header__title">
-                    <span className="panel-header__icon"><GridFour size={15} weight="regular" /></span>
-                    <h2>Répartition par région</h2>
-                  </div>
-                </div>
-
-                <div className="mini-stats">
-                  {loading ? (
-                    renderLoadingState()
-                  ) : regionBreakdown.length === 0 ? (
-                    renderActionState('Vous n’avez pas encore de marché dans ce périmètre pour la période sélectionnée.', !isProjectManager)
-                  ) : (
-                    regionBreakdown.map((entry) => (
-                      <div key={entry.label} className="mini-stat" style={{ minHeight: 'auto' }}>
-                        <small>{entry.label}</small>
-                        <strong>{entry.value}</strong>
-                      </div>
-                    ))
-                  )}
-                </div>
+          <div className="panel stats-panel" style={{ marginTop: '1.5rem' }}>
+            {/* En-tête avec titre, recherche et filtres rapides */}
+            <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+              <div className="panel-header__title">
+                <span className="panel-header__icon"><GridFour size={16} weight="regular" /></span>
+                <h2>Suivi opérationnel de mes chantiers ({assignedProjects.length})</h2>
               </div>
 
-              <div className="panel">
-                <div className="panel-header">
-                  <div className="panel-header__title">
-                    <span className="panel-header__icon"><ChartBar size={15} weight="regular" /></span>
-                    <h2>Avancement par axe</h2>
-                  </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                {/* Recherche textuelle */}
+                <div style={{ position: 'relative', minWidth: 220 }}>
+                  <MagnifyingGlass size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                  <input
+                    type="text"
+                    placeholder="Filtrer (nom, axe, région…)"
+                    value={pmSearch}
+                    onChange={(e) => setPmSearch(e.target.value)}
+                    style={{
+                      padding: '0.35rem 0.75rem 0.35rem 2rem',
+                      fontSize: '0.8rem',
+                      borderRadius: 8,
+                      border: '1px solid var(--border)',
+                      background: 'var(--surface)',
+                      color: 'var(--text)',
+                      width: '100%',
+                    }}
+                  />
                 </div>
 
-                <div className="alert-list">
-                  {loading ? (
-                    renderLoadingState()
-                  ) : axisProgress.length === 0 ? (
-                    renderActionState('Aucun axe n’est encore associé à votre périmètre pour cette période.', !isProjectManager)
-                  ) : (
-                    axisProgress.map((entry) => (
-                      <div key={entry.label} className="progress-wrap" style={{ marginBottom: '0.75rem' }}>
-                        <div className="progress-labels">
-                          <span>{entry.label}</span>
-                          <strong>{entry.value.toFixed(1)}%</strong>
-                        </div>
-                        <div className="progress-bar">
-                          <span style={{ width: `${Math.min(entry.value, 100)}%` }} />
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="panel-grid dashboard-grid" style={{ gridTemplateColumns: '1.2fr 0.8fr' }}>
-              <div className="panel">
-                <div className="panel-header">
-                  <div className="panel-header__title">
-                    <span className="panel-header__icon"><Clock size={15} weight="regular" /></span>
-                    <h2>Marchés en retard ({delayedProjects.length})</h2>
-                  </div>
-                </div>
-
-                <div className="alert-list">
-                  {loading ? (
-                    renderLoadingState()
-                  ) : delayedProjects.length === 0 ? (
-                    renderActionState('Vous n’avez pas encore de marché assigné. Consultez l’ensemble de vos marchés.', !isProjectManager)
-                  ) : (
-                    delayedProjects.slice(0, 5).map((project) => (
-                      <div key={project.id} className="alert-item" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
-                        <span>
-                          <strong>{project.axe_detail?.designation || 'Projet'}</strong> | {project.num_marche || '—'} | {project.titulaire || 'Titulaire'}
-                        </span>
-                        <span>{Number(project.dernier_avancement?.avancement_physique ?? 0).toFixed(1)}%</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="panel">
-                <div className="panel-header">
-                  <div className="panel-header__title">
-                    <span className="panel-header__icon"><CheckCircle size={15} weight="regular" /></span>
-                    <h2>Échéances proches (30 j)</h2>
-                  </div>
-                </div>
-
-                <div className="alert-list">
-                  {loading ? (
-                    renderLoadingState()
-                  ) : nearDeadlineProjects.length === 0 ? (
-                    renderActionState('Aucune échéance proche n’est actuellement identifiée sur votre périmètre.', !isProjectManager)
-                  ) : (
-                    nearDeadlineProjects.map((project) => (
-                      <div key={project.id} className="alert-item" style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem' }}>
-                        <span>{project.resume || project.description || 'Projet'}</span>
-                        <span>{project.date_fin_actualisee ? new Date(project.date_fin_actualisee).toLocaleDateString('fr-FR') : '—'}</span>
-                      </div>
-                    ))
-                  )}
+                {/* Filtres d'état */}
+                <div style={{ display: 'inline-flex', padding: '0.2rem', borderRadius: 8, background: 'rgba(148, 163, 184, 0.08)', border: '1px solid var(--border)', gap: '0.25rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setPmFilter('all')}
+                    className={pmFilter === 'all' ? 'btn btn-primary' : 'btn btn-outline'}
+                    style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', border: 'none' }}
+                  >
+                    Tous ({assignedProjects.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPmFilter('delayed')}
+                    className={pmFilter === 'delayed' ? 'btn btn-primary' : 'btn btn-outline'}
+                    style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', border: 'none', color: delayedProjects.length > 0 && pmFilter !== 'delayed' ? 'var(--danger)' : undefined }}
+                  >
+                    En retard ({delayedProjects.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPmFilter('ontime')}
+                    className={pmFilter === 'ontime' ? 'btn btn-primary' : 'btn btn-outline'}
+                    style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', border: 'none' }}
+                  >
+                    Dans les délais ({onTimeProjects.length})
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="panel" style={{ marginTop: '1rem' }}>
-              <div className="panel-header">
-                <div className="panel-header__title">
-                  <span className="panel-header__icon"><MapPin size={15} weight="regular" /></span>
-                  <h2>Carte des travaux en cours</h2>
-                </div>
+            {/* Alerte synthétique */}
+            {delayedProjects.length > 0 ? (
+              <div style={{
+                margin: '0.75rem 1.25rem 0.25rem',
+                padding: '0.65rem 1rem',
+                borderRadius: 8,
+                background: 'rgba(239, 68, 68, 0.10)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                fontSize: '0.85rem',
+                color: 'var(--danger)',
+              }}>
+                <WarningCircle size={18} weight="fill" />
+                <span><strong>Attention :</strong> {delayedProjects.length} chantier(s) présente(nt) un retard sur le calendrier prévisionnel.</span>
               </div>
+            ) : assignedProjects.length > 0 ? (
+              <div style={{
+                margin: '0.75rem 1.25rem 0.25rem',
+                padding: '0.55rem 1rem',
+                borderRadius: 8,
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.20)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                fontSize: '0.8rem',
+                color: 'var(--success)',
+              }}>
+                <CheckCircle size={16} weight="fill" />
+                <span>Tous les chantiers de votre portefeuille respectent le calendrier d’avancement.</span>
+              </div>
+            ) : null}
 
-              <div style={{ height: 180, borderRadius: 12, background: 'linear-gradient(135deg, rgba(59,130,246,0.10), rgba(16,185,129,0.08))', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                <svg viewBox="0 0 600 180" width="100%" height="100%" preserveAspectRatio="none" aria-label="Mini carte des travaux">
-                  <path d="M30 130 C110 40, 170 70, 220 120 S330 160, 390 80 S520 50, 570 120" fill="none" stroke="rgba(59,130,246,0.7)" strokeWidth="4" strokeLinecap="round" />
-                  <path d="M80 30 L150 90 L250 50 L390 100 L480 30" fill="none" stroke="rgba(16,185,129,0.7)" strokeWidth="3" strokeLinecap="round" strokeDasharray="8 8" />
-                  <circle cx="120" cy="80" r="6" fill="#22c55e" />
-                  <circle cx="240" cy="110" r="6" fill="#f59e0b" />
-                  <circle cx="420" cy="72" r="6" fill="#ef4444" />
-                  <circle cx="500" cy="90" r="6" fill="#38bdf8" />
-                </svg>
-              </div>
+            {/* Tableau unique central */}
+            <div className="table-card compact-table" style={{ marginTop: '0.75rem' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: 240 }}>Marché & Localisation</th>
+                    <th style={{ minWidth: 140 }}>Titulaire</th>
+                    <th style={{ minWidth: 160 }}>Avancement physique</th>
+                    <th style={{ minWidth: 120 }}>Statut</th>
+                    <th style={{ minWidth: 130 }}>Échéance</th>
+                    <th style={{ width: 90, textAlign: 'center' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+                        Chargement de vos chantiers…
+                      </td>
+                    </tr>
+                  ) : filteredProjects.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+                        {assignedProjects.length === 0
+                          ? 'Vous n’avez aucun marché assigné pour le moment.'
+                          : 'Aucun chantier ne correspond aux critères de filtre.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredProjects.map((project) => {
+                      const avancementVal = Number(project.dernier_avancement?.avancement_physique ?? 0)
+                      const isDelayed = Boolean(project.dernier_avancement?.est_en_retard)
+                      const situation = project.dernier_avancement?.situation_w
+                      const lastDate = project.dernier_avancement?.date_avancement
+                        ? new Date(project.dernier_avancement.date_avancement).toLocaleDateString('fr-FR')
+                        : null
+
+                      const dateFin = project.date_fin_actualisee
+                      let dateFinFormatted = 'Non définie'
+                      let delayDays: number | null = null
+                      if (dateFin) {
+                        const parsed = new Date(dateFin)
+                        if (!isNaN(parsed.getTime())) {
+                          dateFinFormatted = parsed.toLocaleDateString('fr-FR')
+                          delayDays = Math.ceil((parsed.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                        }
+                      }
+
+                      return (
+                        <tr key={project.id}>
+                          <td>
+                            <div style={{ display: 'grid', gap: 3 }}>
+                              <strong style={{ fontSize: '0.88rem', color: 'var(--text-strong)' }}>
+                                {project.resume || project.description || 'Marché sans intitulé'}
+                              </strong>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', fontSize: '0.75rem', color: 'var(--muted)' }}>
+                                {project.axe_detail?.designation && (
+                                  <span style={{ padding: '0.1rem 0.4rem', borderRadius: 4, background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', fontWeight: 600 }}>
+                                    {project.axe_detail.designation}
+                                  </span>
+                                )}
+                                {project.region && (
+                                  <span style={{ padding: '0.1rem 0.4rem', borderRadius: 4, background: 'rgba(148, 163, 184, 0.1)', color: 'var(--muted)' }}>
+                                    {project.region}
+                                  </span>
+                                )}
+                                {project.num_marche && (
+                                  <span>N° {project.num_marche}</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>
+                            <span style={{ fontSize: '0.85rem' }}>{project.titulaire || '—'}</span>
+                          </td>
+
+                          <td>
+                            <div style={{ display: 'grid', gap: 4 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem' }}>
+                                <strong style={{ color: avancementVal >= 75 ? 'var(--success)' : 'var(--text-strong)' }}>
+                                  {avancementVal.toFixed(1)}%
+                                </strong>
+                                {lastDate && (
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--muted)' }}>
+                                    Pointage : {lastDate}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ height: 6, borderRadius: 99, background: 'rgba(148, 163, 184, 0.2)', overflow: 'hidden' }}>
+                                <div
+                                  style={{
+                                    height: '100%',
+                                    width: `${Math.min(avancementVal, 100)}%`,
+                                    borderRadius: 99,
+                                    background: isDelayed
+                                      ? 'var(--danger)'
+                                      : avancementVal >= 75
+                                      ? 'var(--success)'
+                                      : '#3b82f6',
+                                    transition: 'width 0.3s ease',
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>
+                            {isDelayed ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.2rem 0.55rem', borderRadius: 99, background: 'rgba(239, 68, 68, 0.12)', color: 'var(--danger)', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--danger)' }} />
+                                En retard
+                              </span>
+                            ) : situation === 'Acheve' ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.2rem 0.55rem', borderRadius: 99, background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
+                                Achevé
+                              </span>
+                            ) : situation === 'Arrete' ? (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.2rem 0.55rem', borderRadius: 99, background: 'rgba(245, 158, 11, 0.12)', color: 'var(--warning)', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--warning)' }} />
+                                Arrêté
+                              </span>
+                            ) : (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', padding: '0.2rem 0.55rem', borderRadius: 99, background: 'rgba(16, 185, 129, 0.12)', color: 'var(--success)', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)' }} />
+                                Dans les délais
+                              </span>
+                            )}
+                          </td>
+
+                          <td>
+                            <div style={{ display: 'grid', gap: 2, fontSize: '0.8rem' }}>
+                              <span>{dateFinFormatted}</span>
+                              {delayDays !== null && (
+                                <span style={{
+                                  fontSize: '0.7rem',
+                                  color: delayDays < 0 ? 'var(--danger)' : delayDays <= 30 ? 'var(--warning)' : 'var(--muted)',
+                                }}>
+                                  {delayDays < 0
+                                    ? `Dépassée de ${Math.abs(delayDays)} j`
+                                    : delayDays <= 30
+                                    ? `J-${delayDays}`
+                                    : `Dans ${delayDays} j`}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn btn-outline"
+                              onClick={() => {
+                                if (typeof window !== 'undefined') {
+                                  window.location.hash = `#/travaux/detail/${project.id}`
+                                }
+                              }}
+                              style={{ padding: '0.3rem 0.55rem', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                              title="Accéder aux détails du marché"
+                            >
+                              <span>Détails</span>
+                              <ArrowRight size={12} />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
-          </>
+          </div>
         )
       })()}
 

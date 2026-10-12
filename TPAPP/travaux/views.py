@@ -281,7 +281,8 @@ def reporting_view(request):
             region_display = ", ".join(sorted(regions_portion)) if regions_portion else "N/A"
 
             # Récupération du dernier avancement
-            last = marche.avancements.first()
+            # Récupère explicitement le dernier avancement par date
+            last = marche.avancements.order_by('-date_avancement').first()
             #last_obj = marche.avancements.first()
             # TEST DE SÉCURITÉ
             if last is not None:
@@ -305,9 +306,9 @@ def reporting_view(request):
                 'description':marche.description,
                 'titulaire': marche.titulaire,
                 'financement':marche.financement,
-                'last': marche.avancements.first(),
-                'temporel': last.avancement_temporel if (last and hasattr(last, 'avancement_temporel')) else 0, # Utilise la nouvelle logique OS 
-                'date_fin': marche.date_fin_actualisee, # Utilise la date qui bouge avec les arrêts
+                'last': last,
+                'temporel': last.avancement_temporel if (last and hasattr(last, 'avancement_temporel')) else 0,
+                'date_fin': marche.date_fin_actualisee,
                 'situation': last.get_situation_w_display() if last else '-',
                 'color_class': 'success' if last and last.avancement_physique >= 80 else 'warning' if last and last.avancement_physique >= 40 else 'danger'
             }

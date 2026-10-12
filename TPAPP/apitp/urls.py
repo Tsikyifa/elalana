@@ -20,7 +20,9 @@ from .views import (
     MarcheCartoView,
     CurrentUserView,
     UserManagementView,
+    NotificationViewSet,
 )
+from .views_purge import purge_old_session_cookies
 
 router = DefaultRouter()
 router.register('intervenants', IntervenantViewSet)
@@ -39,6 +41,7 @@ router.register('travaux/messages', MessageMarcheViewSet, basename='message-marc
 router.register('travaux/os', OSViewSet, basename='os')
 router.register('travaux/glissements', TravauxGlisseViewSet, basename='glissement')
 router.register('travaux/conventions', ConventionProgrammeViewSet, basename='convention')
+router.register('notifications', NotificationViewSet, basename='notification')
 
 urlpatterns = [
     path('auth/me/', CurrentUserView.as_view(), name='api_current_user'),
@@ -48,4 +51,8 @@ urlpatterns = [
     path('travaux/stats/dashboard/', DashboardStatsView.as_view(), name='api_dashboard_stats'),
     path('carto/marche/<uuid:marche_id>/', MarcheCartoView.as_view(), name='api_marche_carto'),
 ] + router.urls
+
+urlpatterns += [
+    path('auth/purge-session-cookies/', purge_old_session_cookies, name='purge_session_cookies'),
+]
 

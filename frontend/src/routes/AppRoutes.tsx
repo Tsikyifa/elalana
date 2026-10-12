@@ -26,12 +26,12 @@ function isPageAllowedForUser(page: Route['page'], userRoles: string[] = []) {
 
 export function AppRoutes({ route, userRoles = [] }: AppRoutesProps) {
   if (!isPageAllowedForUser(route.page, userRoles)) {
-    return <Dashboard />
+    return <Dashboard userRoles={userRoles} />
   }
 
   switch (route.page) {
     case 'dashboard':
-      return <Dashboard />
+      return <Dashboard userRoles={userRoles} />
     case 'travaux':
       if (route.detailId) {
         return <MarcheDetailPage marcheId={route.detailId} />

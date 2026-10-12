@@ -105,3 +105,25 @@ class ProjectManagerAccessTests(TestCase):
 
         self.assertEqual(marche.axe.attache_suivi, pm)
         self.assertEqual(axe.attache_suivi, pm)
+
+    def test_admin_can_assign_project_manager_when_updating_existing_marche(self):
+        pm = User.objects.create_user(username='pm_update', password='secret')
+        pm_group = Group.objects.create(name='chef_de_projet')
+        pm.groups.add(pm_group)
+
+        payload = {
+            'resume': 'RN2 - Marché mis à jour',
+            'description': 'Description mise à jour',
+            'financement': 'RPI',
+            'tiers': 'Tiers D',
+            'titulaire': 'Titulaire D',
+            'etape_actuelle': 'EXE',
+            'chef_de_projet': pm.pk,
+        }
+
+        serializer = MarcheWriteSerializer(instance=self.marche, data=payload, partial=True)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        marche = serializer.save()
+
+        self.assertEqual(marche.axe.attache_suivi, pm)
+        self.assertEqual(self.axe.attache_suivi, pm)

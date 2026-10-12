@@ -25,7 +25,8 @@ class MarcheListSerializer(serializers.ModelSerializer):
             return AvancementMiniSerializer(last_av).data
 
         # Récupère le dernier avancement grâce à l'ordering=['-date_avancement']
-        last_av = obj.avancements.first()
+        # S'assurer d'utiliser explicitement le dernier relevé par date
+        last_av = obj.avancements.order_by('-date_avancement').first()
         if last_av:
             return AvancementMiniSerializer(last_av).data
         return {"avancement_physique": 0, "avancement_financier": 0, "avancement_temporel": 0}

@@ -1,5 +1,7 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.models import Group
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -20,7 +22,7 @@ from .models import (
 from .serializers import *
 from travaux.models import (
     Localisation, Axe, Bac, Marche, PKMarche, Avancement, MediaAvancement, OS,
-    TravauxGlisse, ConventionProgramme, MessageMarche
+    TravauxGlisse, ConventionProgramme, MessageMarche, Notification
 )
 from django.db.models import Sum, Count, Q, Avg
 from django.http import JsonResponse
@@ -28,6 +30,7 @@ from django.http import JsonResponse
 from rest_framework.views import APIView
 from rest_framework import viewsets, parsers, permissions
 from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.decorators import action
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
 from rest_framework.exceptions import AuthenticationFailed, NotFound, PermissionDenied
@@ -50,6 +53,9 @@ from travaux.mixins import (
 )
 
 ACTIVE_ROLES = ['admin', 'chef_de_projet', 'drtp', 'visiteur']
+
+# --- NOMS DE COOKIES (renommés pour ignorer les fantômes) ---
+ACCESS_COOKIE_NAME = 'access_v3'
 
 
 def _get_dashboard_period(request):
@@ -102,44 +108,154 @@ def canonicalize_role_name(role_name):
     return normalized if normalized in ACTIVE_ROLES else None
 
 
-def get_auth_cookie_config(host: str, is_production: bool | None = None):
+def create_notification_for_user(user, *, notification_type, title, message, related_model=None, related_id=None):
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return None
+
+    notification = Notification.objects.create(
+        user=user,
+        type=notification_type,
+        title=title,
+        message=message,
+        related_model=related_model,
+        related_id=str(related_id) if related_id is not None else None,
+    )
+
+    channel_layer = get_channel_layer()
+    if channel_layer is not None:
+        async_to_sync(channel_layer.group_send)(
+            f'user_notifications_{user.id}',
+            {
+                'type': 'notification.message',
+                'payload': NotificationSerializer(notification).data,
+            },
+        )
+
+    return notification
+
+
+def get_market_notification_recipients(marche, source_user=None):
+    recipients = set()
+
+    pm_user = getattr(getattr(marche, 'axe', None), 'attache_suivi', None) if marche else None
+    if pm_user is not None and (source_user is None or pm_user.pk != source_user.pk):
+        recipients.add(pm_user)
+
+    for user in get_user_model().objects.filter(is_active=True):
+        if source_user is not None and user.pk == source_user.pk:
+            continue
+        if pm_user is not None and user.pk == pm_user.pk:
+            continue
+        if is_admin_like_user(user) or is_visitor_user(user):
+            recipients.add(user)
+
+    return sorted(recipients, key=lambda user: user.pk)
+
+
+def get_auth_cookie_config(host: str | None = None, is_production: bool | None = None):
+    configured_domain = (
+        getattr(settings, 'AUTH_COOKIE_DOMAIN', None)
+        or getattr(settings, 'SESSION_COOKIE_DOMAIN', None)
+        or getattr(settings, 'CSRF_COOKIE_DOMAIN', None)
+    )
+    configured_path = (
+        getattr(settings, 'AUTH_COOKIE_PATH', None)
+        or getattr(settings, 'SESSION_COOKIE_PATH', None)
+        or '/'
+    )
+    configured_secure = (
+        getattr(settings, 'AUTH_COOKIE_SECURE', None)
+        is not None and getattr(settings, 'AUTH_COOKIE_SECURE')
+    ) or getattr(settings, 'SESSION_COOKIE_SECURE', False)
+    configured_samesite = (
+        getattr(settings, 'AUTH_COOKIE_SAMESITE', None)
+        or getattr(settings, 'SESSION_COOKIE_SAMESITE', 'Lax')
+    )
+
     host = (host or '').lower()
     production = is_production if is_production is not None else ('elalana.mg' in host or host.endswith('.mg'))
+
+    if configured_domain:
+        return {
+            'domain': configured_domain,
+            'path': configured_path,
+            'secure': configured_secure,
+            'samesite': configured_samesite,
+        }
 
     if production and (host.endswith('.elalana.mg') or host in {'elalana.mg', 'www.elalana.mg', 'back.elalana.mg', 'dev.elalana.mg'}):
         return {
             'domain': '.elalana.mg',
+            'path': '/',
             'secure': True,
             'samesite': 'None',
         }
 
     return {
         'domain': None,
+        'path': '/',
         'secure': False,
         'samesite': 'Lax',
     }
 
 
+def _purge_cookies_via_set_cookie(response, cookie_config):
+    """Expire chaque cookie UNE fois, avec les mêmes attributs que lors de la pose."""
+    cookie_names = (
+        ACCESS_COOKIE_NAME,
+        settings.SESSION_COOKIE_NAME,
+        'csrftoken',
+        'access',
+        'access_v2',
+        'sessionid',
+    )
+    seen = set()
+    for cookie_name in cookie_names:
+        if cookie_name in seen:
+            continue
+        seen.add(cookie_name)
+        response.set_cookie(
+            key=cookie_name,
+            value='',
+            max_age=0,
+            expires='Thu, 01 Jan 1970 00:00:00 GMT',
+            path=cookie_config.get('path', '/'),
+            domain=cookie_config.get('domain'),
+            secure=cookie_config.get('secure', False),
+            httponly=True,
+            samesite=cookie_config.get('samesite', 'Lax'),
+        )
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class CustomAuthToken(ObtainAuthToken):
-    # Désactiver l'authentification préalable : un utilisateur qui tente de se
-    # connecter ne doit pas être rejeté avec 401 si un ancien cookie token périmé subsiste.
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         user = serializer.validated_data['user']
 
-        # � Autoriser tout utilisateur actif valide : chef de projet, chef d'axe,
-        # gestionnaire, etc. L'accès aux données reste contrôlé par les permissions
-        # métier et les filtres d’assignation par axe/marché.
         if not getattr(user, 'is_active', False):
             raise AuthenticationFailed("Accès refusé : compte inactif")
 
-        token, _ = Token.objects.get_or_create(user=user)
+        # Nettoyage de la session précédente
+        try:
+            request.session.flush()
+        except Exception:
+            pass
+
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
+
+        cookie_config = get_auth_cookie_config(
+            request.get_host(),
+            is_production=not settings.DEBUG,
+        )
+
+        login(request, user)
+        request.session.cycle_key()
 
         response = JsonResponse({
             "message": "Login réussi",
@@ -148,64 +264,140 @@ class CustomAuthToken(ObtainAuthToken):
                 "username": user.username,
                 "email": user.email,
                 "is_staff": user.is_staff,
-                "is_superuser": user.is_superuser
-            }
+                "is_superuser": user.is_superuser,
+            },
         })
 
-        cookie_config = get_auth_cookie_config(request.get_host(), is_production=not settings.DEBUG)
+        # Purge des anciens cookies (sauf ceux qu'on repose juste après)
+        _purge_cookies_via_set_cookie(response, cookie_config)
 
+        # Le cookie de session est posé par SessionMiddleware (settings.SESSION_COOKIE_NAME)
         response.set_cookie(
-            key="access",
+            key=ACCESS_COOKIE_NAME,
             value=token.key,
             httponly=True,
             secure=cookie_config['secure'],
             samesite=cookie_config['samesite'],
             domain=cookie_config['domain'],
-            path="/",
+            path=cookie_config['path'],
             max_age=60 * 60 * 24 * 7,
         )
-
         return response
-
 
 @method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
-    # La déconnexion doit aboutir même avec un cookie périmé : sinon le navigateur
-    # garde un cookie invalide et la session ne se referme jamais proprement.
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        # On supprime le jeton : un cookie rejoué ne vaut plus rien.
-        token = request.COOKIES.get("access")
-        if token:
-            Token.objects.filter(key=token).delete()
+        from django.contrib.sessions.models import Session
+        from django.utils import timezone as dj_timezone
+        from django.contrib.auth import get_user_model as get_user_model_fn
 
-        cookie_config = get_auth_cookie_config(request.get_host(), is_production=not settings.DEBUG)
+        user_to_logout = None
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            user_to_logout = request.user
+        elif request.session.get('_auth_user_id'):
+            try:
+                user_to_logout = get_user_model_fn().objects.get(
+                    pk=request.session.get('_auth_user_id')
+                )
+            except get_user_model_fn().DoesNotExist:
+                pass
+
+        if user_to_logout is None:
+            for cookie_name in (ACCESS_COOKIE_NAME, 'access_v2', 'access'):
+                tok = request.COOKIES.get(cookie_name)
+                if tok:
+                    try:
+                        t = Token.objects.get(key=tok)
+                        user_to_logout = t.user
+                        break
+                    except Token.DoesNotExist:
+                        pass
+
+        if user_to_logout is not None:
+            now = dj_timezone.now()
+            for session in Session.objects.filter(expire_date__gte=now):
+                try:
+                    data = session.get_decoded()
+                    if str(data.get('_auth_user_id')) == str(user_to_logout.pk):
+                        session.delete()
+                except Exception:
+                    pass
+            Token.objects.filter(user=user_to_logout).delete()
+
+        for cookie_name in (ACCESS_COOKIE_NAME, 'access_v2', 'access'):
+            tok = request.COOKIES.get(cookie_name)
+            if tok:
+                try:
+                    t = Token.objects.get(key=tok)
+                    Token.objects.filter(user=t.user).delete()
+                except Token.DoesNotExist:
+                    pass
+
+        try:
+            request.session.flush()
+        except Exception:
+            pass
+        try:
+            logout(request)
+        except Exception:
+            pass
+
+        cookie_config = get_auth_cookie_config(
+            request.get_host(),
+            is_production=not settings.DEBUG,
+        )
         response = Response({"message": "logout"})
 
-        delete_kwargs = {
-            'path': '/',
-            'samesite': cookie_config['samesite'],
-        }
-        if cookie_config['domain'] is not None:
-            delete_kwargs['domain'] = cookie_config['domain']
+        # Expire authoritative cookies using cookie_config
+        try:
+            response.set_cookie(
+                key=settings.SESSION_COOKIE_NAME,
+                value='',
+                max_age=0,
+                expires='Thu, 01 Jan 1970 00:00:00 GMT',
+                path=cookie_config.get('path', '/'),
+                domain=cookie_config.get('domain', None),
+                secure=cookie_config.get('secure', False),
+                httponly=True,
+                samesite=cookie_config.get('samesite', 'Lax'),
+            )
+        except Exception:
+            pass
 
-        # HttpResponseBase.delete_cookie() does not accept 'secure' or
-        # 'httponly' keyword arguments; pass only supported ones.
-        response.delete_cookie("access", **delete_kwargs)
-        response.delete_cookie("sessionid", **delete_kwargs)
-        if cookie_config['domain'] is not None:
-            # Sécurité supplémentaire : purger aussi sans domain explicite
-            response.delete_cookie("access", path='/')
-            response.delete_cookie("sessionid", path='/')
+        _purge_cookies_via_set_cookie(response, cookie_config)
+
         return response
 
 
+@method_decorator(never_cache, name='dispatch')
 class CurrentUserView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        # ============ DEBUG 3 ============
+        print("=" * 60)
+        print("=== /auth/me/ CALLED ===")
+        print("COOKIES REÇUS:", dict(request.COOKIES))
+        print("request.user:", request.user.username if request.user.is_authenticated else "anon", "| ID:", getattr(request.user, 'id', None))
+        print("=" * 60)
+        # ============ FIN DEBUG 3 ============
+
+        # HTTP cache control to avoid stale responses being reused
+        response = Response()
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        response['Vary'] = 'Cookie'
+
+        # Diagnostic logging (temporary) to help debug cookie/session clashes
+        response['X-Debug-Cookies-Header'] = request.META.get('HTTP_COOKIE', '')
+        # The successful authenticator (if any) is set by DRF on the request
+        success_auth = getattr(request, 'successful_authenticator', None)
+        response['X-Debug-Authenticator'] = getattr(success_auth, '__class__', type(success_auth)).__name__ if success_auth is not None else 'None'
+
         user = request.user
         roles = []
         for role_name in user.groups.values_list('name', flat=True).order_by('name'):
@@ -213,7 +405,7 @@ class CurrentUserView(APIView):
             if canonical is not None and canonical not in roles:
                 roles.append(canonical)
 
-        return Response({
+        response.data = {
             'user': {
                 'id': user.id,
                 'username': user.username,
@@ -227,9 +419,33 @@ class CurrentUserView(APIView):
                 'roles': roles,
             },
             'can_manage_users': user.is_superuser or is_admin_like_user(user),
-        })
+        }
+
+        return response
 
 
+class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = NotificationSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return Notification.objects.filter(user=self.request.user).order_by('-created_at')
+
+    @action(detail=False, methods=['get'], url_path='unread-count')
+    def unread_count(self, request):
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response({'count': count})
+
+    @action(detail=False, methods=['post'], url_path='mark-read')
+    def mark_read(self, request):
+        notifications = self.get_queryset().filter(is_read=False)
+        count = notifications.count()
+        notifications.update(is_read=True, read_at=timezone.now())
+        return Response({'success': True, 'count': count})
+
+
+@method_decorator(never_cache, name='dispatch')
 class UserManagementView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -263,10 +479,14 @@ class UserManagementView(APIView):
                 'roles': user_roles,
             })
 
-        return Response({
+        response = Response({
             'users': serialized_users,
             'roles': roles,
         })
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
     def post(self, request):
         if not request.user.is_superuser:
@@ -317,7 +537,7 @@ class UserManagementView(APIView):
             if canonical is not None and canonical not in user_roles:
                 user_roles.append(canonical)
 
-        return Response({
+        response = Response({
             'id': user.id,
             'username': user.username,
             'email': user.email,
@@ -328,6 +548,10 @@ class UserManagementView(APIView):
             'is_superuser': user.is_superuser,
             'roles': user_roles,
         }, status=201)
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
     def delete(self, request, user_id=None):
         if not request.user.is_superuser:
@@ -347,7 +571,11 @@ class UserManagementView(APIView):
             return Response({'detail': 'Impossible de supprimer le dernier superutilisateur.'}, status=400)
 
         user_to_delete.delete()
-        return Response({'detail': 'Utilisateur supprimé avec succès.'}, status=200)
+        response = Response({'detail': 'Utilisateur supprimé avec succès.'}, status=200)
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
 
 class IntervenantViewSet(viewsets.ModelViewSet):
@@ -361,14 +589,11 @@ class DoleanceViewSet(viewsets.ModelViewSet):
     queryset = Doleance.objects.all().order_by('-created_at')
 
     serializer_class = DoleanceSerializer
-    # Indispensable pour bloquer l'AnonymousUser
     permission_classes = [permissions.IsAuthenticated]
 
-    # ParserClasses pour gérer le FormData (fichiers) envoyé par Next.js
     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
 
     def perform_create(self, serializer):
-        # On injecte l'utilisateur ici, c'est la méthode la plus propre en DRF
         serializer.save(responsable_insert=self.request.user)
 
     def get_queryset(self):
@@ -378,7 +603,6 @@ class DoleanceViewSet(viewsets.ModelViewSet):
             return qs.none()
         if user.is_staff or user.is_superuser:
             return qs
-        # Normal users only see their own demandes
         return qs.filter(responsable_insert=user)
 
 
@@ -394,7 +618,6 @@ class PromesseViewSet(viewsets.ModelViewSet):
     serializer_class = PromesseSerializer
 
     def perform_create(self, serializer):
-        # On injecte automatiquement l'utilisateur connecté comme responsable
         serializer.save(responsable_insert=self.request.user)
 
     def get_queryset(self):
@@ -414,30 +637,17 @@ class EtapePromesseViewSet(viewsets.ModelViewSet):
 
 
 class LocalisationViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Liste des localisations pour remplir les sélecteurs du frontend.
-    """
     queryset = Localisation.objects.all().order_by('province', 'region', 'district')
     serializer_class = LocalisationSerializer
-    # Désactive la pagination pour ce ViewSet si vous voulez tous les districts d'un coup
     pagination_class = None
 
 
 class AxeViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Axes routiers, en lecture seule : sert à remplir le sélecteur du formulaire Bac.
-    """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = AxeSerializer
     pagination_class = None
 
     def get_queryset(self):
-        """Supporte le filtre optionnel `?decoupage=avec|sans`.
-
-        - `avec`  => axes ayant au moins un PKDistrict lié
-        - `sans`  => axes sans PKDistrict
-        - sinon  => tous les axes
-        """
         qs = Axe.objects.all().order_by('designation')
         dec = None
         try:
@@ -454,35 +664,21 @@ class AxeViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class BacViewSet(viewsets.ModelViewSet):
-    """
-    CRUD complet des bacs de traversée.
-    Alimente la liste du frontend et le formulaire « Nouveau Bac ».
-    """
     permission_classes = [permissions.IsAuthenticated]
     queryset = Bac.objects.select_related('axe').order_by('-id')
     serializer_class = BacSerializer
-    # Le frontend affiche la liste complète : pas de pagination.
     pagination_class = None
 
 
 # --- STATISTIQUES DÉCISIONNELLES (DASHBOARD) ---
 @method_decorator(never_cache, name='dispatch')
 class DashboardStatsView(APIView):
-    """
-    Fournit l'ensemble des données agrégées pour le tableau de bord décisionnel React :
-    - Cartes KPI (Budget engagé, avancement physique moyen, marchés en retard, reliquats glissements)
-    - Matrice de financement croisée (par source et état)
-    - Statistiques du parc des bacs
-    - Suivi des validations AUC
-    - Alertes dynamiques
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         is_project_manager_scope = is_project_manager_user(request.user)
         periode = _get_dashboard_period(request)
 
-        # 1. Tous les marchés avec leur dernier avancement
         marches = Marche.objects.select_related('axe').prefetch_related(
             Prefetch(
                 'avancements',
@@ -506,7 +702,6 @@ class DashboardStatsView(APIView):
 
         total_budget = sum(float(marche.montant or 0) for marche in marches)
 
-        # Liste des derniers avancements (un seul par marché ayant des avancements)
         derniers_avancements = []
         for m in marches:
             if m.avancements_list:
@@ -530,7 +725,6 @@ class DashboardStatsView(APIView):
         total_auc = auc_obtenues + auc_en_attente
         auc_pct = round((auc_obtenues / total_auc * 100) if total_auc > 0 else 0, 1)
 
-        # 3. Matrice de financement croisée (prend en compte TOUS les marchés créés)
         financements = ['RPI', 'FR', 'FIN_EX', 'Rech_finan', 'AUTRE']
         etats = ['En_ph', 'En_passation', 'En_cours', 'Arrete', 'Acheve']
 
@@ -586,14 +780,22 @@ class DashboardStatsView(APIView):
             'retard': total_global_retard
         })
 
-        # 4. Statistiques des Bacs de traversée
         bacs = Bac.objects.all()
         if is_project_manager_scope:
+            bacs = bacs.filter(axe__attache_suivi=request.user)
+        elif not (request.user.is_superuser or is_admin_like_user(request.user) or is_visitor_user(request.user)):
             bacs = bacs.filter(axe__attache_suivi=request.user)
         total_bacs = bacs.count()
         bacs_operationnels = bacs.filter(etat_bac='Operationel').count()
         bacs_hors_usage = bacs.filter(etat_bac='Hors_usage').count()
         besoin_entretien_bac = bacs.aggregate(total=Sum('besoin_entretien_bac'))['total'] or 0
+
+        conventions = ConventionProgramme.objects.select_related('axe').all()
+        if is_project_manager_scope:
+            conventions = conventions.filter(axe__attache_suivi=request.user)
+        elif not (request.user.is_superuser or is_admin_like_user(request.user) or is_visitor_user(request.user)):
+            conventions = conventions.filter(axe__attache_suivi=request.user)
+        convention_budget = conventions.filter(annee=timezone.now().year).aggregate(total=Sum('montant_souhaite'))['total'] or 0
 
         propulsion_counts = {
             'Moteur': bacs.filter(propulsion='Moteur').count(),
@@ -602,7 +804,6 @@ class DashboardStatsView(APIView):
             'Treuil_a_moteur': bacs.filter(propulsion='Treuil_a_moteur').count(),
         }
 
-        # 5. Alertes dynamiques
         alerts = []
         if marches_en_retard_count > 0:
             alerts.append(f"{marches_en_retard_count} marché(s) dépassent le seuil de délai planifié.")
@@ -613,10 +814,24 @@ class DashboardStatsView(APIView):
         if not alerts:
             alerts.append("Tous les chantiers et programmes suivent le calendrier prévisionnel.")
 
+        if is_project_manager_scope:
+            total_budget_engage = float(total_budget)
+            budget_breakdown = {
+                'travaux': float(total_budget),
+            }
+        else:
+            total_budget_engage = float(total_budget) + float(besoin_entretien_bac) + float(convention_budget)
+            budget_breakdown = {
+                'travaux': float(total_budget),
+                'bac': float(besoin_entretien_bac),
+                'convention': float(convention_budget),
+            }
+
         response_data = {
             'scope': 'project_manager' if is_project_manager_scope else 'global',
             'summary_cards': {
-                'budget_engage': float(total_budget),
+                'budget_engage': total_budget_engage,
+                'budget_breakdown': budget_breakdown,
                 'avancement_physique': round(float(avg_physique), 1),
                 'marches_en_retard': marches_en_retard_count,
                 'marches_acheves': marches_acheves_count,
@@ -647,17 +862,20 @@ class DashboardStatsView(APIView):
 
 # --- GESTION DES MARCHÉS (PPM) ---
 class MarcheViewSet(viewsets.ModelViewSet):
-    """
-    CRUD complet des marchés publics de travaux.
-    Supporte la recherche par texte (numéro, description, entreprise, axe)
-    et les filtres par axe, financement et étape.
-    """
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
+        # Précharge explicitement le dernier avancement (par date) pour éviter
+        # les problèmes d'ordre lors du rendu côté frontend.
         queryset = Marche.objects.select_related('axe').prefetch_related(
-            'segments_pk', 'ordres_service', 'avancements__medias'
+            'segments_pk',
+            'ordres_service',
+            Prefetch(
+                'avancements',
+                queryset=Avancement.objects.order_by('-date_avancement').prefetch_related('medias'),
+                to_attr='dernier_avancement'
+            ),
         ).order_by('axe__designation', 'resume')
 
         q = self.request.query_params.get('q', '').strip()
@@ -690,7 +908,6 @@ class MarcheViewSet(viewsets.ModelViewSet):
         elif status_scope == 'inactive':
             queryset = queryset.exclude(Q(est_anticipe=True) | Q(etape_actuelle='EXE'))
 
-        # Authorization: restrict non-staff users to marches attached to their axe
         user = getattr(self.request, 'user', None)
         return filter_queryset_for_user(user, queryset)
 
@@ -707,9 +924,8 @@ def _user_can_access_marche(user, marche: Marche) -> bool:
 
 
 def get_marche_carto_color(marche: Marche) -> str:
-    """Couleur du tracé selon l'étape / le retard (aligné sur la spec cartographie)."""
     if marche.etape_actuelle == 'EXE':
-        dernier_av = marche.avancements.first()
+        dernier_av = marche.avancements.order_by('-date_avancement').first()
         if dernier_av and dernier_av.est_en_retard:
             return '#ef4444'
         return '#10b981'
@@ -719,9 +935,6 @@ def get_marche_carto_color(marche: Marche) -> str:
 
 
 class MarcheCartoView(APIView):
-    """
-    GeoJSON FeatureCollection des tronçons PK d'un marché (calcul EPSG:29701 côté serveur).
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, marche_id):
@@ -774,10 +987,8 @@ class MarcheCartoView(APIView):
         return JsonResponse({'type': 'FeatureCollection', 'features': features})
 
 
-# --- SUIVI DES AVANCEMENTS ---
 class AvancementViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
-    # Le relevé est envoyé en multipart dès qu'une pièce jointe l'accompagne.
     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
     queryset = (
         Avancement.objects.select_related('marche')
@@ -795,32 +1006,66 @@ class AvancementViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        """
-        `file` et `legend` accompagnent le relevé sans être des champs du modèle :
-        on crée la pièce jointe ici, une fois le relevé enregistré.
-        """
         avancement = serializer.save()
-        fichier = self.request.FILES.get('file')
-        if fichier:
-            MediaAvancement.objects.create(
-                avancement=avancement,
-                fichier=fichier,
-                legende=(self.request.data.get('legend') or '').strip(),
+        
+        # Récupérer tous les fichiers envoyés (pas juste le premier/dernier)
+        fichiers = self.request.FILES.getlist('fichier') or self.request.FILES.getlist('file')
+        
+        # Créer une pièce jointe pour chaque fichier
+        for index, fichier in enumerate(fichiers):
+            if fichier:
+                # Construire la légende : utiliser celle envoyée ou ajouter un suffixe
+                legende = (
+                    self.request.data.get('legend')
+                    or self.request.data.get('legende')
+                    or ''
+                ).strip()
+                
+                # Si plusieurs fichiers, numéroter la légende
+                if len(fichiers) > 1:
+                    if legende:
+                        legende = f"{legende} ({index + 1})"
+                    else:
+                        legende = f"Pièce jointe {index + 1}"
+                
+                MediaAvancement.objects.create(
+                    avancement=avancement,
+                    fichier=fichier,
+                    legende=legende,
+                )
+
+        marche = avancement.marche
+        for recipient in get_market_notification_recipients(marche, source_user=self.request.user):
+            create_notification_for_user(
+                recipient,
+                notification_type='avancement_nouveau',
+                title='Nouvel avancement',
+                message=f"Un nouvel avancement a été ajouté sur le marché {marche.resume or marche.num_marche or 'non identifié'}.",
+                related_model='Marche',
+                related_id=str(marche.id),
             )
 
 
-# --- DISCUSSION D'UN MARCHÉ ---
 class MessageMarcheViewSet(viewsets.ModelViewSet):
-    """
-    Fil de discussion d'un marché, alimenté par l'onglet « Discussion ».
-
-    Les messages d'un marché sont récupérés via `?marche=<id>` ; l'auteur est
-    toujours l'utilisateur connecté et chacun ne peut supprimer que les siens.
-    """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = MessageMarcheSerializer
     parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
     pagination_class = None
+
+    def _broadcast_message(self, message, event_type):
+        channel_layer = get_channel_layer()
+        if channel_layer is None:
+            return
+
+        payload = {
+            'type': event_type,
+            'marche_id': str(message.marche_id),
+            'message': MessageMarcheSerializer(message, context={'request': self.request}).data,
+        }
+        async_to_sync(channel_layer.group_send)(
+            f'marche_discussion_{message.marche_id}',
+            {'type': 'discussion.message', 'payload': payload},
+        )
 
     def get_queryset(self):
         queryset = MessageMarche.objects.select_related('marche', 'auteur').order_by('created_at')
@@ -830,16 +1075,43 @@ class MessageMarcheViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(auteur=self.request.user)
+        instance = serializer.save(auteur=self.request.user)
+        self._broadcast_message(instance, 'message.created')
+
+        for recipient in get_market_notification_recipients(instance.marche, source_user=self.request.user):
+            if recipient == self.request.user:
+                continue
+            create_notification_for_user(
+                recipient,
+                notification_type='message_nouveau',
+                title='Nouveau message',
+                message=f"Un nouveau message a été publié sur le marché {instance.marche.resume or instance.marche.num_marche or 'non identifié'}.",
+                related_model='Marche',
+                related_id=str(instance.marche.id),
+            )
 
     def perform_destroy(self, instance):
-        # Le fil est commun : on ne retire que ses propres messages.
         if instance.auteur_id != self.request.user.id:
             raise PermissionDenied("Vous ne pouvez supprimer que vos propres messages.")
+
+        marche_id = instance.marche_id
         instance.delete()
 
+        channel_layer = get_channel_layer()
+        if channel_layer is not None:
+            async_to_sync(channel_layer.group_send)(
+                f'marche_discussion_{marche_id}',
+                {
+                    'type': 'discussion.message',
+                    'payload': {
+                        'type': 'message.deleted',
+                        'marche_id': str(marche_id),
+                        'message_id': instance.pk,
+                    },
+                },
+            )
 
-# --- ORDRES DE SERVICE (OS) ---
+
 class OSViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = OS.objects.select_related('marche', 'os_arret_concerne').order_by('date_os')
@@ -854,7 +1126,6 @@ class OSViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-# --- TRAVAUX GLISSÉS ---
 class TravauxGlisseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = TravauxGlisse.objects.select_related('axe', 'marche').order_by('-annee_report')
@@ -869,7 +1140,6 @@ class TravauxGlisseViewSet(viewsets.ModelViewSet):
         return queryset
 
 
-# --- CONVENTIONS PROGRAMMES ---
 class ConventionProgrammeViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     queryset = ConventionProgramme.objects.select_related('axe').order_by('-annee', 'axe__designation', 'pk_debut')

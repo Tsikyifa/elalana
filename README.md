@@ -56,6 +56,9 @@ python manage.py seedaxe
 python manage.py import_referentiel
 ```
 
+export PYTHONPATH=/home/tsiky/Documents/asa/elalana/TPAPP 
+daphne TPAPP.asgi:application --bind 0.0.0.0 --port 8000
+
 > Les commandes ci-dessus sont écrites de manière portable et ne dépendent pas d’un chemin absolu local comme /home/... .
 
 

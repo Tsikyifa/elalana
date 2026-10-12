@@ -11,7 +11,7 @@ from .models import (
 )
 from travaux.models import (
     Localisation, Axe, Bac, Marche, PKMarche, Avancement, MediaAvancement, OS,
-    TravauxGlisse, ConventionProgramme, MessageMarche
+    TravauxGlisse, ConventionProgramme, MessageMarche, Notification
 )
 
 
@@ -108,13 +108,27 @@ class AxeSerializer(serializers.ModelSerializer):
     """Version allégée de l'Axe, pour alimenter les listes déroulantes."""
 
     type_axe_display = serializers.CharField(source='get_type_axe_display', read_only=True)
+    attache_suivi = serializers.SerializerMethodField()
+    attache_suivi_display = serializers.SerializerMethodField()
     # Expose les segments PKDistrict pour les clients qui veulent le découpage
     # (utilisé par le frontend pour afficher PK début/fin lorsqu'on filtre "decoupage=avec").
     segments_districts = serializers.SerializerMethodField()
 
     class Meta:
         model = Axe
-        fields = ['id', 'designation', 'type_axe', 'type_axe_display', 'longueur_total', 'segments_districts']
+        fields = [
+            'id', 'designation', 'type_axe', 'type_axe_display', 'longueur_total',
+            'attache_suivi', 'attache_suivi_display', 'segments_districts'
+        ]
+
+    def get_attache_suivi(self, obj):
+        return obj.attache_suivi_id
+
+    def get_attache_suivi_display(self, obj):
+        if not obj.attache_suivi:
+            return None
+        full_name = obj.attache_suivi.get_full_name().strip()
+        return full_name or obj.attache_suivi.username
 
     def get_segments_districts(self, obj):
         # Retourne une liste légère des segments liés à l'axe
@@ -254,7 +268,8 @@ class MarcheListSerializer(serializers.ModelSerializer):
         ]
 
     def get_dernier_avancement(self, obj):
-        last_av = obj.avancements.first()
+        # On s'assure de récupérer le dernier avancement par date
+        last_av = obj.avancements.order_by('-date_avancement').first()
         if last_av:
             return AvancementSerializer(last_av).data
         return {
@@ -387,6 +402,17 @@ class MarcheWriteSerializer(serializers.ModelSerializer):
         marche = Marche.objects.create(**validated_data)
         for seg in all_segments:
             PKMarche.objects.create(marche=marche, **seg)
+
+        if assigned_pm:
+            from apitp.views import create_notification_for_user
+            create_notification_for_user(
+                assigned_pm,
+                notification_type='marche_assigne',
+                title='Marché assigné',
+                message=f"Le marché {marche.resume or marche.num_marche or 'non identifié'} vous a été assigné.",
+                related_model='Marche',
+                related_id=str(marche.id),
+            )
         return marche
 
     def update(self, instance, validated_data):
@@ -394,9 +420,30 @@ class MarcheWriteSerializer(serializers.ModelSerializer):
         segments_pk_data = validated_data.pop('segments_pk', None)
         all_segments = segments_data if segments_data is not None else segments_pk_data
 
+        assigned_pm = validated_data.pop('chef_de_projet', None)
+        if assigned_pm is None:
+            assigned_pm = validated_data.pop('attache_suivi', None)
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
+
+        if assigned_pm:
+            axe_obj = instance.axe
+            if axe_obj is not None:
+                axe_obj.attache_suivi = assigned_pm
+                axe_obj.save(update_fields=['attache_suivi'])
+
+            from apitp.views import create_notification_for_user
+            create_notification_for_user(
+                assigned_pm,
+                notification_type='marche_assigne',
+                title='Marché assigné',
+                message=f"Le marché {instance.resume or instance.num_marche or 'non identifié'} vous a été assigné.",
+                related_model='Marche',
+                related_id=str(instance.id),
+            )
+
         if all_segments is not None:
             instance.segments_pk.all().delete()
             for seg in all_segments:
@@ -429,6 +476,15 @@ class ConventionProgrammeSerializer(serializers.ModelSerializer):
 
 
 # --- DISCUSSION D'UN MARCHÉ ---
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'type', 'title', 'message', 'related_model', 'related_id',
+            'is_read', 'created_at', 'read_at'
+        ]
+
+
 class MessageMarcheSerializer(serializers.ModelSerializer):
     """
     Message du fil de discussion d'un marché.

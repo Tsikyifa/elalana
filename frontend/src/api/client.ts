@@ -32,8 +32,6 @@ function readErrorMessage(body: unknown, status: number): { message: string; fie
   const fields: Record<string, string[]> = {}
   for (const [key, value] of Object.entries(body as Record<string, unknown>)) {
     if (key === 'detail') continue
-    // Si DRF renvoie une structure imbriquée (p.ex. erreurs par index pour une liste),
-    // on la sérialise proprement pour pouvoir l'afficher côté client.
     if (value && typeof value === 'object') {
       try {
         fields[key] = [JSON.stringify(value)]
@@ -75,15 +73,50 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message, fields)
 }
 
-/** `credentials: 'include'` est indispensable : l'auth repose sur le cookie `access`. */
-const JSON_HEADERS = { 'Content-Type': 'application/json' }
+/**
+ * Lit le token CSRF depuis le cookie `csrftoken`.
+ * Django le pose automatiquement sur les réponses contenant `get_token()`.
+ * Nécessaire pour les requêtes POST/PUT/PATCH/DELETE authentifiées par session.
+ */
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(^|;\s*)csrftoken=([^;]+)/)
+  if (!match) return null
+  try {
+    return decodeURIComponent(match[2])
+  } catch {
+    return match[2]
+  }
+}
 
-export async function apiGet<T>(path: string): Promise<T> {
+/**
+ * Construit les headers JSON + CSRF pour les requêtes qui modifient des données.
+ * `credentials: 'include'` est indispensable : l'auth repose sur les cookies.
+ */
+function buildHeaders(includeCsrf: boolean): HeadersInit {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (includeCsrf) {
+    const csrf = getCsrfToken()
+    if (csrf) {
+      headers['X-CSRFToken'] = csrf
+    }
+  }
+  return headers
+}
+
+export async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
     credentials: 'include',
-    headers: JSON_HEADERS,
+    headers: {
+      ...buildHeaders(false),
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      ...(init?.headers ?? {}),
+    },
     cache: 'no-store',
+    ...init,
   })
 
   if (!response.ok) {
@@ -97,7 +130,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     credentials: 'include',
-    headers: JSON_HEADERS,
+    headers: buildHeaders(true),
     body: JSON.stringify(body),
     cache: 'no-store',
   })
@@ -112,11 +145,19 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 /**
  * POST multipart, nécessaire dès qu'un fichier (image du bac) accompagne le formulaire.
  * On ne fixe pas `Content-Type` : le navigateur ajoute lui-même la boundary.
+ * On envoie tout de même `X-CSRFToken`.
  */
 export async function apiPostForm<T>(path: string, form: FormData): Promise<T> {
+  const headers: Record<string, string> = {}
+  const csrf = getCsrfToken()
+  if (csrf) {
+    headers['X-CSRFToken'] = csrf
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     credentials: 'include',
+    headers,
     body: form,
     cache: 'no-store',
   })
@@ -132,7 +173,7 @@ export async function apiPut<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'PUT',
     credentials: 'include',
-    headers: JSON_HEADERS,
+    headers: buildHeaders(true),
     body: JSON.stringify(body),
     cache: 'no-store',
   })
@@ -148,7 +189,7 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'PATCH',
     credentials: 'include',
-    headers: JSON_HEADERS,
+    headers: buildHeaders(true),
     body: JSON.stringify(body),
     cache: 'no-store',
   })
@@ -164,7 +205,7 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'DELETE',
     credentials: 'include',
-    headers: JSON_HEADERS,
+    headers: buildHeaders(true),
     cache: 'no-store',
   })
 
@@ -178,4 +219,3 @@ export async function apiDelete<T = void>(path: string): Promise<T> {
 
   return response.json() as Promise<T>
 }
-

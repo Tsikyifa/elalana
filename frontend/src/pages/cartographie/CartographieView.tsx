@@ -274,14 +274,14 @@ export function CartographieView() {
 
       const marchesRetard = marchesAxe.filter((m) => m.dernier_avancement?.est_en_retard)
       const marchesAcheves = marchesAxe.filter(
-        (m) => m.dernier_avancement?.situation_w === 'Acheve' || (m.dernier_avancement?.avancement_physique ?? 0) >= 100,
+        (m) => m.dernier_avancement?.situation_w === 'Acheve' || (Number(m.dernier_avancement?.avancement_physique) ?? 0) >= 100,
       )
       const marchesArretes = marchesAxe.filter((m) => m.dernier_avancement?.situation_w === 'Arrete')
 
       const marchesWithAv = marchesAxe.filter((m) => m.dernier_avancement != null)
       const avgPhysique = marchesWithAv.length
         ? Math.round(
-            marchesWithAv.reduce((acc, m) => acc + (m.dernier_avancement?.avancement_physique || 0), 0) /
+            marchesWithAv.reduce((acc, m) => acc + (Number(m.dernier_avancement?.avancement_physique) || 0), 0) /
               marchesWithAv.length,
           )
         : 0
@@ -364,7 +364,10 @@ export function CartographieView() {
     const marchesWithAv = marches.filter((m) => m.dernier_avancement)
     const avgPhysique = marchesWithAv.length
       ? Math.round(
-          marchesWithAv.reduce((acc, m) => acc + (m.dernier_avancement?.avancement_physique || 0), 0) /
+          marchesWithAv.reduce((acc, m) => {
+            const physique = Number(m.dernier_avancement?.avancement_physique) || 0
+            return acc + physique
+          }, 0) /
             marchesWithAv.length,
         )
       : 0
@@ -833,11 +836,11 @@ export function CartographieView() {
           </div>
           <div className="carto-kpi-content">
             <span className="carto-kpi-label">Avancement Moyen</span>
-            <div className="carto-kpi-number">{globalStats.avgPhysique}%</div>
+            <div className="carto-kpi-number">{Number.isFinite(globalStats.avgPhysique) ? globalStats.avgPhysique : 0}%</div>
             <div className="carto-kpi-progress">
               <div
                 className="carto-kpi-progress-bar"
-                style={{ width: `${Math.min(100, Math.max(0, globalStats.avgPhysique))}%` }}
+                style={{ width: `${Math.min(100, Math.max(0, globalStats.avgPhysique || 0))}%` }}
               />
             </div>
           </div>

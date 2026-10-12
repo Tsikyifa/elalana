@@ -38,12 +38,12 @@ export type CurrentUserResponse = {
   can_manage_users: boolean
 }
 
-export function fetchCurrentUser() {
-  return apiGet<CurrentUserResponse>('/auth/me/')
+export function fetchCurrentUser(signal?: AbortSignal) {
+  return apiGet<CurrentUserResponse>(`/auth/me/?_=${Date.now()}`, { signal })
 }
 
-export function fetchUserManagement() {
-  return apiGet<UserManagementResponse>('/users/')
+export function fetchUserManagement(signal?: AbortSignal) {
+  return apiGet<UserManagementResponse>(`/users/?_=${Date.now()}`, { signal })
 }
 
 export function createUserManagement(payload: {

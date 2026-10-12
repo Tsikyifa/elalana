@@ -312,7 +312,7 @@ class MarcheAdmin(ImportExportModelAdmin):
                 'axe__segments_districts',
                 queryset=PKDistrict.objects.order_by('pk_debut').select_related('district')
             ),
-            'avancements'
+            models.Prefetch('avancements', queryset=Avancement.objects.order_by('-date_avancement'))
         )
 
         if request.user.is_superuser or is_operateur_travaux(request.user):
@@ -362,7 +362,10 @@ class MarcheAdmin(ImportExportModelAdmin):
 
     def avancement_physique_recap(self, obj):
         """Dernier % physique avec couleur d'alerte"""
-        dernier = obj.avancements.first()
+        # On force l'utilisation du dernier avancement par date pour éviter
+        # les cas où le préfetch ou l'ordre implicite ne renverrait pas
+        # l'entrée la plus récente.
+        dernier = obj.avancements.order_by('-date_avancement').first()
         if dernier and dernier.avancement_physique is not None:
             val = dernier.avancement_physique
             if val >= 80: color = "#27ae60"    # Vert
@@ -374,7 +377,7 @@ class MarcheAdmin(ImportExportModelAdmin):
 
     def situation_actuelle(self, obj):
         """Affiche le dernier statut"""
-        dernier = obj.avancements.first()
+        dernier = obj.avancements.order_by('-date_avancement').first()
         return dernier.get_situation_w_display() if dernier else "Non démarré"
     situation_actuelle.short_description = "Statut"
 
